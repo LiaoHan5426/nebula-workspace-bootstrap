@@ -121,16 +121,16 @@ function Invoke-InteractiveMode {
 "@ -ForegroundColor Cyan
 
     # Step 1: Workspace root
-    Write-Host "`n" + "="*60
+    Write-Host "`n$('='*60)"
     Write-Host "Step 1: Workspace Configuration"
-    Write-Host "="*60
+    Write-Host "$('='*60)"
     $defaultWorkspace = Join-Path $env:USERPROFILE "nebula-workspace"
     $workspaceRoot = Read-InputWithDefault "Enter workspace root directory" $defaultWorkspace
 
     # Step 2: Repositories
-    Write-Host "`n" + "="*60
+    Write-Host "`n$('='*60)"
     Write-Host "Step 2: Repository Configuration"
-    Write-Host "="*60
+    Write-Host "$('='*60)"
     Write-Host "Enter Git repository URLs. You can use format:"
     Write-Host "  - Simple URL: https://github.com/user/repo.git"
     Write-Host "  - Full spec:  name=xxx,url=xxx,dir=xxx,alias=xxx"
@@ -167,9 +167,9 @@ function Invoke-InteractiveMode {
     }
 
     # Step 3: Editor Configuration
-    Write-Host "`n" + "="*60
+    Write-Host "`n$('='*60)"
     Write-Host "Step 3: Editor Configuration"
-    Write-Host "="*60
+    Write-Host "$('='*60)"
     Write-Host "Select editors to initialize:"
     Write-Host "  [1] Cursor"
     Write-Host "  [2] Trae"
@@ -187,15 +187,15 @@ function Invoke-InteractiveMode {
     }
 
     # Step 4: Code Review Graph (CRG)
-    Write-Host "`n" + "="*60
+    Write-Host "`n$('='*60)"
     Write-Host "Step 4: Code Review Graph (CRG)"
-    Write-Host "="*60
+    Write-Host "$('='*60)"
     $enableCrg = Confirm-Action "Enable code-review-graph?" $true
 
     # Step 5: RTK (Rust Token Killer)
-    Write-Host "`n" + "="*60
+    Write-Host "`n$('='*60)"
     Write-Host "Step 5: RTK (Rust Token Killer)"
-    Write-Host "="*60
+    Write-Host "$('='*60)"
     $enableRtk = Confirm-Action "Enable RTK?" $true
     $forceRtk = $false
     if ($enableRtk) {
@@ -203,18 +203,18 @@ function Invoke-InteractiveMode {
     }
 
     # Step 6: Advanced Options
-    Write-Host "`n" + "="*60
+    Write-Host "`n$('='*60)"
     Write-Host "Step 6: Advanced Options"
-    Write-Host "="*60
+    Write-Host "$('='*60)"
     $skipPull = Confirm-Action "Skip pulling updates for existing repos?" $false
     $skipGraphBuild = Confirm-Action "Skip building code-review-graph?" $false
     $forceAgents = Confirm-Action "Overwrite architecture/AGENTS.md?" $false
     $force = Confirm-Action "Force re-initialization (overwrite existing)?" $false
 
     # Summary
-    Write-Host "`n" + "="*60
+    Write-Host "`n$('='*60)"
     Write-Host "Configuration Summary"
-    Write-Host "="*60
+    Write-Host "$('='*60)"
     Write-Host "Workspace Root: $workspaceRoot"
     Write-Host "Repositories: $($repos.Count)"
     $repos | ForEach-Object { Write-Host "  $_" }
@@ -226,7 +226,7 @@ function Invoke-InteractiveMode {
     Write-Host "Force Agents: $(if ($forceAgents) { "Yes" } else { "No" })"
     Write-Host "Force Re-initialization: $(if ($force) { "Yes" } else { "No" })"
 
-    Write-Host "`n" + "="*60
+    Write-Host "`n$('='*60)"
     if (-not (Confirm-Action "Proceed with this configuration?" $true)) {
         Write-Host "Aborted by user"
         exit 0
