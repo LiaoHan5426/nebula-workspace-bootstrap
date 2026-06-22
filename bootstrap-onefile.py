@@ -559,6 +559,29 @@ TRAE_CONFIG_TPL = """{
       "esbenp.prettier-vscode",
       "redhat.vscode-yaml"
     ]
+  },
+  "trae": {
+    "rules": {
+      "scanPaths": {RULES_SCAN_PATHS}
+    },
+    "skills": {
+      "scanPaths": {SKILLS_SCAN_PATHS}
+    },
+    "hooks": {
+      "enabled": true,
+      "path": ".trae/hooks.json"
+    },
+    "mcp": {
+      "enabled": true,
+      "servers": {
+        "code-review-graph": {
+          "command": "{CRG_EXECUTABLE}",
+          "args": ["serve"],
+          "cwd": ".",
+          "type": "stdio"
+        }
+      }
+    }
   }
 }
 """
@@ -569,17 +592,27 @@ def write_workspace_trae_assets(workspace_root: Path, repos: List[RepoConfig], v
     trae_dir.mkdir(parents=True, exist_ok=True)
 
     folder_entries = []
+    rules_scan_paths = []
+    skills_scan_paths = []
+    
     for repo in repos:
         folder_entries.append(f'      {{"name": "{repo.workspace_name}", "path": "./{repo.dir}"}}')
-
+        rules_scan_paths.append(f'        "./{repo.dir}/.trae/rules"')
+        skills_scan_paths.append(f'        "./{repo.dir}/{repo.skills_dir}/skills"')
+    
     folder_entries.append('      {"name": "architecture", "path": "./architecture"}')
+    rules_scan_paths.append('        "./architecture"')
 
     venv = venv_dir or (workspace_root / ".venv")
     python_path = str(venv_python(venv))
+    crg_executable = str(venv / "Scripts" / "code-review-graph.exe")
 
     content = TRAE_CONFIG_TPL
     content = content.replace("{FOLDER_ENTRIES}", ",\n".join(folder_entries))
     content = content.replace("{PYTHON_PATH}", python_path)
+    content = content.replace("{RULES_SCAN_PATHS}", "[\n" + ",\n".join(rules_scan_paths) + "\n      ]")
+    content = content.replace("{SKILLS_SCAN_PATHS}", "[\n" + ",\n".join(skills_scan_paths) + "\n      ]")
+    content = content.replace("{CRG_EXECUTABLE}", crg_executable)
 
     config_path = trae_dir / "workspace.json"
     config_path.write_text(content, encoding="utf-8")
@@ -589,32 +622,65 @@ def write_workspace_trae_assets(workspace_root: Path, repos: List[RepoConfig], v
 def sync_agent_skills_rules_to_editor(workspace_root: Path, repos: List[RepoConfig], editors: List[str]) -> None:
     for repo in repos:
         repo_path = workspace_root / repo.dir
-        skills_dir = repo_path / repo.skills_dir / "rules"
+        
+        # Sync rules (.mdc files)
+        rules_src_dir = repo_path / repo.skills_dir / "rules"
+        if rules_src_dir.is_dir():
+            mdc_files = sorted(rules_src_dir.glob("*.mdc"))
+            if mdc_files:
+                # Sync rules to Cursor
+                if "cursor" in editors:
+                    rules_dest = repo_path / ".cursor" / "rules"
+                    rules_dest.mkdir(parents=True, exist_ok=True)
+                    for src in mdc_files:
+                        shutil.copy2(src, rules_dest / src.name)
+                    print(f"[rules] {repo.key}: synced {len(mdc_files)} rule(s) to Cursor")
 
-        if not skills_dir.is_dir():
-            print(f"[rules] skip {repo.key}: missing {skills_dir}")
-            continue
+                # Sync rules to Trae
+                if "trae" in editors:
+                    rules_dest = repo_path / ".trae" / "rules"
+                    rules_dest.mkdir(parents=True, exist_ok=True)
+                    for src in mdc_files:
+                        shutil.copy2(src, rules_dest / src.name)
+                    print(f"[rules] {repo.key}: synced {len(mdc_files)} rule(s) to Trae")
+            else:
+                print(f"[rules] skip {repo.key}: no .mdc files")
+        else:
+            print(f"[rules] skip {repo.key}: missing {rules_src_dir}")
+        
+        # Sync skills (SKILL.md files)
+        skills_src_dir = repo_path / repo.skills_dir / "skills"
+        if skills_src_dir.is_dir():
+            skill_dirs = sorted(skills_src_dir.glob("*"))
+            skill_dirs = [d for d in skill_dirs if d.is_dir()]
+            if skill_dirs:
+                # Sync skills to Cursor
+                if "cursor" in editors:
+                    skills_dest = repo_path / ".cursor" / "skills"
+                    skills_dest.mkdir(parents=True, exist_ok=True)
+                    for skill_dir in skill_dirs:
+                        dest_dir = skills_dest / skill_dir.name
+                        dest_dir.mkdir(parents=True, exist_ok=True)
+                        skill_file = skill_dir / "SKILL.md"
+                        if skill_file.exists():
+                            shutil.copy2(skill_file, dest_dir / "SKILL.md")
+                    print(f"[skills] {repo.key}: synced {len(skill_dirs)} skill(s) to Cursor")
 
-        mdc_files = sorted(skills_dir.glob("*.mdc"))
-        if not mdc_files:
-            print(f"[rules] skip {repo.key}: no .mdc files")
-            continue
-
-        # Sync to Cursor
-        if "cursor" in editors:
-            rules_dest = repo_path / ".cursor" / "rules"
-            rules_dest.mkdir(parents=True, exist_ok=True)
-            for src in mdc_files:
-                shutil.copy2(src, rules_dest / src.name)
-            print(f"[rules] {repo.key}: synced {len(mdc_files)} rule(s) to Cursor")
-
-        # Sync to Trae
-        if "trae" in editors:
-            rules_dest = repo_path / ".trae" / "rules"
-            rules_dest.mkdir(parents=True, exist_ok=True)
-            for src in mdc_files:
-                shutil.copy2(src, rules_dest / src.name)
-            print(f"[rules] {repo.key}: synced {len(mdc_files)} rule(s) to Trae")
+                # Sync skills to Trae
+                if "trae" in editors:
+                    skills_dest = repo_path / ".trae" / "skills"
+                    skills_dest.mkdir(parents=True, exist_ok=True)
+                    for skill_dir in skill_dirs:
+                        dest_dir = skills_dest / skill_dir.name
+                        dest_dir.mkdir(parents=True, exist_ok=True)
+                        skill_file = skill_dir / "SKILL.md"
+                        if skill_file.exists():
+                            shutil.copy2(skill_file, dest_dir / "SKILL.md")
+                    print(f"[skills] {repo.key}: synced {len(skill_dirs)} skill(s) to Trae")
+            else:
+                print(f"[skills] skip {repo.key}: no skill directories")
+        else:
+            print(f"[skills] skip {repo.key}: missing {skills_src_dir}")
 
 
 ARCH_AGENTS_TPL = """# Nebula Workspace - Agent Skills
