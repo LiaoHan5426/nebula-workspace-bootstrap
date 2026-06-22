@@ -506,28 +506,12 @@ def write_hook_scripts(hooks_dir: Path, crg_exe: str, python_exe: str, *, active
     }
 
 
-def write_mcp_config(workspace_root: Path, venv_dir: Path, copy_to_cursor: bool = False) -> None:
-    """Write MCP config to workspace root level (.mcp.json) and optionally copy to .cursor directory."""
-    crg_exe = crg_executable(venv_dir)
-    mcp_path = workspace_root / ".mcp.json"
-    content = {
-        "mcpServers": {"code-review-graph": {"command": str(crg_exe).replace("\\", "\\\\"), "args": ["serve"], "cwd": str(workspace_root).replace("\\", "\\\\"), "type": "stdio"}}
-    }
-    mcp_path.write_text(json.dumps(content, indent=2) + "\n", encoding="utf-8")
-    print(f"[mcp] wrote MCP config at {mcp_path}")
-    
-    if copy_to_cursor:
-        cursor_mcp_path = workspace_root / ".cursor" / "mcp.json"
-        shutil.copy2(mcp_path, cursor_mcp_path)
-        print(f"[mcp] wrote MCP config at {cursor_mcp_path}")
-
-
 def write_workspace_cursor_assets(workspace_root: Path, venv_dir: Path, *, rtk_hook_command: Optional[str]) -> None:
-    """Write Cursor-specific assets. Hooks and MCP are written to both workspace level and .cursor directory."""
+    """Write Cursor-specific assets: hooks.json, mcp.json to .cursor directory."""
     cursor_dir = workspace_root / ".cursor"
     cursor_dir.mkdir(parents=True, exist_ok=True)
 
-    # Write hooks to workspace level
+    # Write hooks to .cursor directory
     hooks_dir = workspace_root / ".hooks"
     crg_exe = crg_executable(venv_dir)
     python_exe = str(venv_python(venv_dir))
@@ -536,16 +520,18 @@ def write_workspace_cursor_assets(workspace_root: Path, venv_dir: Path, *, rtk_h
     hook_commands = write_hook_scripts(hooks_dir, crg_exe, python_exe, active_platform=active_platform)
 
     hooks_config = build_hooks_config(hook_commands, rtk_hook_command)
-    hooks_json_path = workspace_root / "hooks.json"
-    hooks_json_path.write_text(json.dumps(hooks_config, indent=2) + "\n", encoding="utf-8")
-    print(f"[cursor] wrote workspace hooks at {hooks_json_path}")
-    
-    # Copy hooks.json to .cursor directory
     cursor_hooks_json = cursor_dir / "hooks.json"
-    shutil.copy2(hooks_json_path, cursor_hooks_json)
+    cursor_hooks_json.write_text(json.dumps(hooks_config, indent=2) + "\n", encoding="utf-8")
     print(f"[cursor] wrote hooks at {cursor_hooks_json}")
 
-    write_mcp_config(workspace_root, venv_dir, copy_to_cursor=True)
+    # Write mcp.json to .cursor directory
+    crg_exe_str = str(crg_exe).replace("\\", "\\\\")
+    mcp_config = {
+        "mcpServers": {"code-review-graph": {"command": crg_exe_str, "args": ["serve"], "cwd": str(workspace_root).replace("\\", "\\\\"), "type": "stdio"}}
+    }
+    cursor_mcp_json = cursor_dir / "mcp.json"
+    cursor_mcp_json.write_text(json.dumps(mcp_config, indent=2) + "\n", encoding="utf-8")
+    print(f"[cursor] wrote MCP config at {cursor_mcp_json}")
 
 
 # Trae IDE hooks configuration (reuses workspace-level hooks.json)
@@ -565,10 +551,10 @@ TRAE_CONFIG_TPL = """{
         "name": "workspace",
         "path": "."
       },
-      {FOLDER_ENTRIES}
+      %FOLDER_ENTRIES%
     ],
     "settings": {
-      "python.pythonPath": "{PYTHON_PATH}"
+      "python.pythonPath": "%PYTHON_PATH%"
     }
   },
   "extensions": {
@@ -580,27 +566,27 @@ TRAE_CONFIG_TPL = """{
     ]
   },
   "trae": {
-    "rules": {{
-      "scanPaths": {RULES_SCAN_PATHS}
-    }},
-    "skills": {{
-      "scanPaths": {SKILLS_SCAN_PATHS}
-    }},
-    "hooks": {{
+    "rules": {
+      "scanPaths": %RULES_SCAN_PATHS%
+    },
+    "skills": {
+      "scanPaths": %SKILLS_SCAN_PATHS%
+    },
+    "hooks": {
       "enabled": true,
-      "path": ".hooks/hooks.json"
-    }},
-    "mcp": {{
+      "path": ".trae/hooks.json"
+    },
+    "mcp": {
       "enabled": true,
-      "configPath": ".mcp.json"
-    }}
+      "configPath": ".trae/mcp.json"
+    }
   }
 }
 """
 
 
-def write_workspace_trae_assets(workspace_root: Path, repos: List[RepoConfig], venv_dir: Optional[Path]) -> None:
-    """Write Trae-specific assets. Hooks and RTK are now at workspace level (.hooks, .rtk)."""
+def write_workspace_trae_assets(workspace_root: Path, repos: List[RepoConfig], venv_dir: Optional[Path], rtk_hook_command: Optional[str]) -> None:
+    """Write Trae-specific assets: workspace.json, hooks.json, mcp.json."""
     trae_dir = workspace_root / ".trae"
     trae_dir.mkdir(parents=True, exist_ok=True)
 
@@ -619,27 +605,37 @@ def write_workspace_trae_assets(workspace_root: Path, repos: List[RepoConfig], v
     venv = venv_dir or (workspace_root / ".venv")
     python_path = str(venv_python(venv)).replace("\\", "\\\\")
 
-    # Write workspace.json - references workspace-level hooks and mcp configs
+    # Write workspace.json
     content = TRAE_CONFIG_TPL
-    content = content.replace("{FOLDER_ENTRIES}", ",\n".join(folder_entries))
-    content = content.replace("{PYTHON_PATH}", python_path)
-    content = content.replace("{RULES_SCAN_PATHS}", "[\n" + ",\n".join(rules_scan_paths) + "\n      ]")
-    content = content.replace("{SKILLS_SCAN_PATHS}", "[\n" + ",\n".join(skills_scan_paths) + "\n      ]")
+    content = content.replace("%FOLDER_ENTRIES%", ",\n".join(folder_entries))
+    content = content.replace("%PYTHON_PATH%", python_path)
+    content = content.replace("%RULES_SCAN_PATHS%", "[\n" + ",\n".join(rules_scan_paths) + "\n      ]")
+    content = content.replace("%SKILLS_SCAN_PATHS%", "[\n" + ",\n".join(skills_scan_paths) + "\n      ]")
 
     config_path = trae_dir / "workspace.json"
     config_path.write_text(content, encoding="utf-8")
     print(f"[trae] wrote workspace config at {config_path}")
     
-    # Copy hooks.json and mcp.json to .trae directory
-    trae_hooks_json = trae_dir / "hooks.json"
-    if (workspace_root / "hooks.json").exists():
-        shutil.copy2(workspace_root / "hooks.json", trae_hooks_json)
-        print(f"[trae] wrote hooks at {trae_hooks_json}")
+    # Write hooks.json to .trae directory
+    hooks_dir = workspace_root / ".hooks"
+    crg_exe = crg_executable(venv_dir)
+    python_exe = str(venv_python(venv_dir))
+    active_platform = "windows" if os.name == "nt" else "unix"
+    hook_commands = write_hook_scripts(hooks_dir, crg_exe, python_exe, active_platform=active_platform)
+    hooks_config = build_hooks_config(hook_commands, rtk_hook_command)
     
+    trae_hooks_json = trae_dir / "hooks.json"
+    trae_hooks_json.write_text(json.dumps(hooks_config, indent=2) + "\n", encoding="utf-8")
+    print(f"[trae] wrote hooks at {trae_hooks_json}")
+    
+    # Write mcp.json to .trae directory
+    crg_exe_str = str(crg_exe).replace("\\", "\\\\")
+    mcp_config = {
+        "mcpServers": {"code-review-graph": {"command": crg_exe_str, "args": ["serve"], "cwd": str(workspace_root).replace("\\", "\\\\"), "type": "stdio"}}
+    }
     trae_mcp_json = trae_dir / "mcp.json"
-    if (workspace_root / ".mcp.json").exists():
-        shutil.copy2(workspace_root / ".mcp.json", trae_mcp_json)
-        print(f"[trae] wrote MCP config at {trae_mcp_json}")
+    trae_mcp_json.write_text(json.dumps(mcp_config, indent=2) + "\n", encoding="utf-8")
+    print(f"[trae] wrote MCP config at {trae_mcp_json}")
 
 
 def sync_agent_skills_rules_to_editor(workspace_root: Path, repos: List[RepoConfig], editors: List[str]) -> None:
@@ -1160,7 +1156,7 @@ Examples:
             print("[cursor] skipped: requires code-review-graph enabled")
         
         if "trae" in editors:
-            write_workspace_trae_assets(workspace_root, repos, venv_dir)
+            write_workspace_trae_assets(workspace_root, repos, venv_dir, rtk_hook_command=rtk_hook)
 
         # Write architecture documentation
         write_architecture_agents(workspace_root, repos, force=args.force_agents, skills_dir=args.skills_dir)
