@@ -670,16 +670,13 @@ def sync_agent_skills_rules_to_editor(workspace_root: Path, repos: List[RepoConf
                 if "cursor" in editors:
                     rules_dest = repo_path / ".cursor" / "rules"
                     rules_dest.mkdir(parents=True, exist_ok=True)
-                    # Clean up old .md files that should be .mdc
-                    for old_md in rules_dest.glob("*.md"):
-                        old_md.unlink()
+                    # Clean up old files
+                    for old_file in rules_dest.glob("*"):
+                        old_file.unlink()
                     for src in all_rule_files:
-                        # Always copy as .mdc for consistency
+                        # Cursor uses .mdc extension
                         dest_name = src.name if src.suffix == ".mdc" else src.stem + ".mdc"
                         dest_path = rules_dest / dest_name
-                        # Remove old file if it exists with different extension
-                        if dest_path.exists():
-                            dest_path.unlink()
                         # Replace agent-skills/skills path with .cursor/skills
                         content = src.read_text(encoding="utf-8")
                         content = content.replace("agent-skills/skills/", ".cursor/skills/")
@@ -690,16 +687,13 @@ def sync_agent_skills_rules_to_editor(workspace_root: Path, repos: List[RepoConf
                 if "trae" in editors:
                     rules_dest = repo_path / ".trae" / "rules"
                     rules_dest.mkdir(parents=True, exist_ok=True)
-                    # Clean up old .md files that should be .mdc
-                    for old_md in rules_dest.glob("*.md"):
-                        old_md.unlink()
+                    # Clean up old files
+                    for old_file in rules_dest.glob("*"):
+                        old_file.unlink()
                     for src in all_rule_files:
-                        # Always copy as .mdc for consistency
-                        dest_name = src.name if src.suffix == ".mdc" else src.stem + ".mdc"
+                        # Trae uses .md extension
+                        dest_name = src.name if src.suffix == ".md" else src.stem + ".md"
                         dest_path = rules_dest / dest_name
-                        # Remove old file if it exists with different extension
-                        if dest_path.exists():
-                            dest_path.unlink()
                         # Replace agent-skills/skills path with .trae/skills
                         content = src.read_text(encoding="utf-8")
                         content = content.replace("agent-skills/skills/", ".trae/skills/")
