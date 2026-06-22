@@ -333,8 +333,8 @@ def ensure_workspace_gitignore_rtk(workspace_root: Path, install_rel: str) -> No
         "# RTK binaries (installed by workspace-bootstrap)",
         f"{install_rel}/rtk.exe",
         f"{install_rel}/rtk",
-        f"{install_rel}/*.zip",
-        f"{install_rel}/*.tar.gz",
+        "*.zip",
+        "*.tar.gz",
     ]
     existing = gitignore.read_text(encoding="utf-8") if gitignore.is_file() else ""
     new_lines = [line for line in lines_to_add if line not in existing]
@@ -345,7 +345,7 @@ def ensure_workspace_gitignore_rtk(workspace_root: Path, install_rel: str) -> No
 
 
 def install_rtk_to_workspace(workspace_root: Path, repos: List[RepoConfig], *, force: bool = False) -> RtkInstall:
-    install_rel = ".cursor/rtk"
+    install_rel = ".rtk"
     install_dir = (workspace_root / install_rel).resolve()
     install_dir.mkdir(parents=True, exist_ok=True)
     github_repo = "rtk-ai/rtk"
@@ -507,22 +507,23 @@ def write_hook_scripts(hooks_dir: Path, crg_exe: str, python_exe: str, *, active
 
 
 def write_mcp_config(workspace_root: Path, venv_dir: Path) -> None:
-    cursor_dir = workspace_root / ".cursor"
-    cursor_dir.mkdir(parents=True, exist_ok=True)
+    """Write MCP config to workspace root level (.mcp.json) for both Cursor and Trae to use."""
     crg_exe = crg_executable(venv_dir)
-    mcp_path = cursor_dir / "mcp.json"
+    mcp_path = workspace_root / ".mcp.json"
     content = {
-        "mcpServers": {"code-review-graph": {"command": crg_exe, "args": ["serve"], "cwd": str(workspace_root), "type": "stdio"}}
+        "mcpServers": {"code-review-graph": {"command": str(crg_exe).replace("\\", "\\\\"), "args": ["serve"], "cwd": str(workspace_root).replace("\\", "\\\\"), "type": "stdio"}}
     }
     mcp_path.write_text(json.dumps(content, indent=2) + "\n", encoding="utf-8")
-    print(f"[cursor] wrote MCP config at {mcp_path}")
+    print(f"[mcp] wrote MCP config at {mcp_path}")
 
 
 def write_workspace_cursor_assets(workspace_root: Path, venv_dir: Path, *, rtk_hook_command: Optional[str]) -> None:
+    """Write Cursor-specific assets. Hooks are now at workspace level (.hooks)."""
     cursor_dir = workspace_root / ".cursor"
-    hooks_dir = cursor_dir / "hooks"
     cursor_dir.mkdir(parents=True, exist_ok=True)
 
+    # Write hooks to workspace level
+    hooks_dir = workspace_root / ".hooks"
     crg_exe = crg_executable(venv_dir)
     python_exe = str(venv_python(venv_dir))
     active_platform = "windows" if os.name == "nt" else "unix"
@@ -530,44 +531,19 @@ def write_workspace_cursor_assets(workspace_root: Path, venv_dir: Path, *, rtk_h
     hook_commands = write_hook_scripts(hooks_dir, crg_exe, python_exe, active_platform=active_platform)
 
     hooks_config = build_hooks_config(hook_commands, rtk_hook_command)
-    hooks_json_path = cursor_dir / "hooks.json"
+    hooks_json_path = workspace_root / "hooks.json"
     hooks_json_path.write_text(json.dumps(hooks_config, indent=2) + "\n", encoding="utf-8")
     print(f"[cursor] wrote workspace hooks at {hooks_json_path}")
 
     write_mcp_config(workspace_root, venv_dir)
 
 
-# Trae IDE hooks configuration
-TRAE_HOOKS_TPL = """{
+# Trae IDE hooks configuration (reuses workspace-level hooks.json)
+# Note: Trae will use the hooks.json at workspace root, no need for separate template
+TRAE_HOOKS_TPL = """{{
   "version": 1,
-  "hooks": {
-    "afterFileEdit": [
-      {
-        "command": "powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{HOOKS_DIR}\\\\crg-update.ps1\"",
-        "timeout": 5
-      }
-    ],
-    "sessionStart": [
-      {
-        "command": "powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{HOOKS_DIR}\\\\crg-session-start.ps1\"",
-        "timeout": 5
-      }
-    ],
-    "beforeShellExecution": [
-      {
-        "matcher": "^git\\\\s+commit",
-        "command": "powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{HOOKS_DIR}\\\\crg-pre-commit.ps1\"",
-        "timeout": 10
-      }
-    ],
-    "preToolUse": [
-      {
-        "command": "powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{RTK_DIR}\\\\rtk-hook-cursor.ps1\"",
-        "matcher": "Shell"
-      }
-    ]
-  }
-}
+  "hooks": {HOOKS_CONTENT}
+}}
 """
 
 # Trae IDE configuration
@@ -594,33 +570,27 @@ TRAE_CONFIG_TPL = """{
     ]
   },
   "trae": {
-    "rules": {
+    "rules": {{
       "scanPaths": {RULES_SCAN_PATHS}
-    },
-    "skills": {
+    }},
+    "skills": {{
       "scanPaths": {SKILLS_SCAN_PATHS}
-    },
-    "hooks": {
+    }},
+    "hooks": {{
       "enabled": true,
-      "path": ".trae/hooks.json"
-    },
-    "mcp": {
+      "path": ".hooks/hooks.json"
+    }},
+    "mcp": {{
       "enabled": true,
-      "servers": {
-        "code-review-graph": {
-          "command": "{CRG_EXECUTABLE}",
-          "args": ["serve"],
-          "cwd": ".",
-          "type": "stdio"
-        }
-      }
-    }
+      "configPath": ".mcp.json"
+    }}
   }
 }
 """
 
 
 def write_workspace_trae_assets(workspace_root: Path, repos: List[RepoConfig], venv_dir: Optional[Path]) -> None:
+    """Write Trae-specific assets. Hooks and RTK are now at workspace level (.hooks, .rtk)."""
     trae_dir = workspace_root / ".trae"
     trae_dir.mkdir(parents=True, exist_ok=True)
 
@@ -638,56 +608,17 @@ def write_workspace_trae_assets(workspace_root: Path, repos: List[RepoConfig], v
 
     venv = venv_dir or (workspace_root / ".venv")
     python_path = str(venv_python(venv)).replace("\\", "\\\\")
-    crg_executable = str(venv / "Scripts" / "code-review-graph.exe").replace("\\", "\\\\")
 
-    # Write workspace.json
+    # Write workspace.json - references workspace-level hooks and mcp configs
     content = TRAE_CONFIG_TPL
     content = content.replace("{FOLDER_ENTRIES}", ",\n".join(folder_entries))
     content = content.replace("{PYTHON_PATH}", python_path)
     content = content.replace("{RULES_SCAN_PATHS}", "[\n" + ",\n".join(rules_scan_paths) + "\n      ]")
     content = content.replace("{SKILLS_SCAN_PATHS}", "[\n" + ",\n".join(skills_scan_paths) + "\n      ]")
-    content = content.replace("{CRG_EXECUTABLE}", crg_executable)
 
     config_path = trae_dir / "workspace.json"
     config_path.write_text(content, encoding="utf-8")
     print(f"[trae] wrote workspace config at {config_path}")
-
-    # Write hooks.json
-    cursor_hooks_dir = workspace_root / ".cursor" / "hooks"
-    cursor_rtk_dir = workspace_root / ".cursor" / "rtk"
-    trae_hooks_dir = trae_dir / "hooks"
-    trae_rtk_dir = trae_dir / "rtk"
-    
-    # Copy hooks from .cursor/hooks to .trae/hooks
-    if cursor_hooks_dir.is_dir():
-        trae_hooks_dir.mkdir(parents=True, exist_ok=True)
-        for hook_file in cursor_hooks_dir.glob("*.ps1"):
-            shutil.copy2(hook_file, trae_hooks_dir / hook_file.name)
-        # Copy bash-fallback directory
-        bash_fallback_dir = cursor_hooks_dir / "bash-fallback"
-        if bash_fallback_dir.is_dir():
-            dest_bash_fallback = trae_hooks_dir / "bash-fallback"
-            dest_bash_fallback.mkdir(parents=True, exist_ok=True)
-            for bash_file in bash_fallback_dir.glob("*.sh"):
-                shutil.copy2(bash_file, dest_bash_fallback / bash_file.name)
-    
-    # Copy RTK from .cursor/rtk to .trae/rtk
-    if cursor_rtk_dir.is_dir():
-        trae_rtk_dir.mkdir(parents=True, exist_ok=True)
-        for rtk_file in cursor_rtk_dir.glob("*"):
-            if rtk_file.is_file():
-                shutil.copy2(rtk_file, trae_rtk_dir / rtk_file.name)
-    
-    # Write hooks.json
-    hooks_dir = str(trae_hooks_dir).replace("\\", "\\\\")
-    rtk_dir = str(trae_rtk_dir).replace("\\", "\\\\")
-    hooks_content = TRAE_HOOKS_TPL
-    hooks_content = hooks_content.replace("{HOOKS_DIR}", hooks_dir)
-    hooks_content = hooks_content.replace("{RTK_DIR}", rtk_dir)
-    
-    hooks_path = trae_dir / "hooks.json"
-    hooks_path.write_text(hooks_content, encoding="utf-8")
-    print(f"[trae] wrote hooks config at {hooks_path}")
 
 
 def sync_agent_skills_rules_to_editor(workspace_root: Path, repos: List[RepoConfig], editors: List[str]) -> None:
