@@ -326,10 +326,10 @@ function bootstrap-workspace {
         if ($Force) { $argsList += "--force" }
         if ($Yes) { $argsList += "--yes" }
         
-        Write-Host "Running bootstrap with args: $argsList" -ForegroundColor Cyan
+        Write-Host "Running bootstrap with args: $bootstrapFile $argsList" -ForegroundColor Cyan
         
         # Run bootstrap script
-        $process = Start-Process -FilePath $python.Source -ArgumentList $argsList -WorkingDirectory $tempDir -Wait -PassThru -NoNewWindow
+        $process = Start-Process -FilePath $python.Source -ArgumentList @($bootstrapFile) + $argsList -WorkingDirectory $tempDir -Wait -PassThru -NoNewWindow
         if ($process.ExitCode -ne 0) {
             Write-Error "Bootstrap failed with exit code $($process.ExitCode)"
             exit $process.ExitCode
