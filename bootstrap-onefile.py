@@ -44,6 +44,7 @@ class RepoConfig:
     workspace_name: str
     crg_alias: str
     skills_dir: str = "agent-skills"
+    branch: Optional[str] = None  # Git branch to clone (default: repo default branch)
 
 
 @dataclass
@@ -85,10 +86,16 @@ def clone_or_update_repo(repo: RepoConfig, workspace_root: Path, skip_pull: bool
             return target_dir
         print(f"[git] updating existing repo: {target_dir}")
         run(["git", "pull", "--ff-only"], cwd=target_dir)
+        # Checkout to specified branch if needed
+        if repo.branch:
+            run(["git", "checkout", repo.branch], cwd=target_dir)
     else:
         print(f"[git] cloning {repo.url} into {target_dir}")
         ensure_workspace_dir(target_dir.parent)
-        run(["git", "clone", repo.url, str(target_dir)])
+        clone_cmd = ["git", "clone", repo.url, str(target_dir)]
+        if repo.branch:
+            clone_cmd.extend(["--branch", repo.branch])
+        run(clone_cmd)
     return target_dir
 
 
@@ -827,13 +834,14 @@ def write_architecture_agents(workspace_root: Path, repos: List[RepoConfig], *, 
 
 
 def parse_repo_spec(spec: str) -> RepoConfig:
-    """Parse repo spec in format: name=xxx,url=xxx,dir=xxx,alias=xxx,skills=xxx or just URL."""
+    """Parse repo spec in format: name=xxx,url=xxx,dir=xxx,alias=xxx,skills=xxx,branch=xxx or just URL."""
     parts = spec.split(",")
     url = ""
     name = ""
     repo_dir = ""
     alias = ""
     skills_dir = "agent-skills"
+    branch = None
     
     for part in parts:
         if "=" in part:
@@ -848,6 +856,8 @@ def parse_repo_spec(spec: str) -> RepoConfig:
                 alias = value
             elif key == "skills":
                 skills_dir = value
+            elif key == "branch":
+                branch = value
         elif not url:
             url = part
     
@@ -863,7 +873,7 @@ def parse_repo_spec(spec: str) -> RepoConfig:
     if not alias:
         alias = name
     
-    return RepoConfig(key=name, url=url, dir=repo_dir, workspace_name=name, crg_alias=alias, skills_dir=skills_dir)
+    return RepoConfig(key=name, url=url, dir=repo_dir, workspace_name=name, crg_alias=alias, skills_dir=skills_dir, branch=branch)
 
 
 # Interactive input helpers
@@ -927,7 +937,8 @@ def interactive_mode() -> dict:
     print("="*60)
     print("Enter Git repository URLs. You can use format:")
     print("  - Simple URL: https://github.com/user/repo.git")
-    print("  - Full spec:  name=xxx,url=xxx,dir=xxx,alias=xxx")
+    print("  - With branch: https://github.com/user/repo.git,branch=development")
+    print("  - Full spec:  name=xxx,url=xxx,dir=xxx,alias=xxx,branch=xxx")
     print("  (Leave empty when done)")
     
     repos = []
@@ -946,8 +957,18 @@ def interactive_mode() -> dict:
             name = user_input.split("/")[-1].replace(".git", "")
             repo_dir = name
             alias = name
-            spec = f"name={name},url={user_input},dir={repo_dir},alias={alias}"
+            # Ask for branch
+            branch = input_with_default("  Branch (default: repo default branch)", "")
+            if branch:
+                spec = f"name={name},url={user_input},dir={repo_dir},alias={alias},branch={branch}"
+            else:
+                spec = f"name={name},url={user_input},dir={repo_dir},alias={alias}"
         else:
+            # Check if branch is specified
+            if "branch=" not in user_input:
+                branch = input_with_default("  Branch (default: repo default branch)", "")
+                if branch:
+                    user_input = f"{user_input},branch={branch}"
             spec = user_input
         
         repos.append(spec)
@@ -1086,6 +1107,10 @@ Examples:
       --repo name=backend,url=https://github.com/user/repo1.git,dir=backend,alias=backend,skills=custom-skills \\
       --repo name=frontend,url=https://github.com/user/repo2.git,dir=frontend,alias=frontend
 
+  # Clone specific branch
+  python bootstrap-onefile.py --workspace-root /path/to/workspace \\
+      --repo https://github.com/user/repo.git,branch=development
+
   # Disable CRG and RTK
   python bootstrap-onefile.py --workspace-root /path/to/workspace --repo https://github.com/user/repo.git \\
       --disable-crg --disable-rtk
@@ -1110,7 +1135,7 @@ Examples:
         # Step 2: Repositories
         parser.add_argument("--workspace-root", required=True, help="Path to workspace root directory")
         parser.add_argument("--repo", action="append", required=True, 
-                            help="Git repo URL or spec (name=xxx,url=xxx,dir=xxx,alias=xxx,skills=xxx)")
+                            help="Git repo URL or spec (name=xxx,url=xxx,dir=xxx,alias=xxx,skills=xxx,branch=xxx)")
         
         # Step 3: SKILLS directory (per-repo via --repo spec, this is global fallback)
         parser.add_argument("--skills-dir", default="agent-skills", 
