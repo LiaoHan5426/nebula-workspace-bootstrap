@@ -131,11 +131,16 @@ function Invoke-InteractiveMode {
     Write-Host "`n" + "="*60
     Write-Host "Step 2: Repository Configuration"
     Write-Host "="*60
+    Write-Host "Enter Git repository URLs. You can use format:"
+    Write-Host "  - Simple URL: https://github.com/user/repo.git"
+    Write-Host "  - Full spec:  name=xxx,url=xxx,dir=xxx,alias=xxx"
+    Write-Host "  (Leave empty when done)"
+    
     $repos = @()
     while ($true) {
         Write-Host "`nRepository $($repos.Count + 1):"
-        $url = Read-InputWithDefault "  Git repository URL"
-        if ([string]::IsNullOrWhiteSpace($url)) {
+        $input = Read-InputWithDefault "  Git repository URL or spec"
+        if ([string]::IsNullOrWhiteSpace($input)) {
             if ($repos.Count -gt 0) {
                 break
             }
@@ -143,49 +148,27 @@ function Invoke-InteractiveMode {
             continue
         }
         
-        $name = Read-InputWithDefault "  Repository name (default: derived from URL)"
-        $repoDir = Read-InputWithDefault "  Local directory name (default: same as name)"
-        $alias = Read-InputWithDefault "  CRG alias (default: same as name)"
-        $skills = Read-InputWithDefault "  Skills directory (default: agent-skills)" "agent-skills"
+        # Check if it's a simple URL or full spec
+        if ($input -notmatch "=") {
+            # Simple URL - parse to get name
+            $name = $input -replace ".*/", "" -replace "\.git$", ""
+            $repoDir = $name
+            $alias = $name
+            $spec = "name=$name,url=$input,dir=$repoDir,alias=$alias"
+        } else {
+            $spec = $input
+        }
         
-        $specParts = @("url=$url")
-        if (-not [string]::IsNullOrWhiteSpace($name)) { $specParts += "name=$name" }
-        if (-not [string]::IsNullOrWhiteSpace($repoDir)) { $specParts += "dir=$repoDir" }
-        if (-not [string]::IsNullOrWhiteSpace($alias)) { $specParts += "alias=$alias" }
-        if ($skills -ne "agent-skills") { $specParts += "skills=$skills" }
-        
-        $repos += $specParts -join ","
+        $repos += $spec
         
         if (-not (Confirm-Action "Add another repository?" $false)) {
             break
         }
     }
 
-    # Step 3: Skills directory (global)
+    # Step 3: Editor Configuration
     Write-Host "`n" + "="*60
-    Write-Host "Step 3: Skills Directory"
-    Write-Host "="*60
-    $skillsDir = Read-InputWithDefault "Default skills directory in repositories" "agent-skills"
-
-    # Step 4: Code Review Graph
-    Write-Host "`n" + "="*60
-    Write-Host "Step 4: Code Review Graph (CRG)"
-    Write-Host "="*60
-    $enableCrg = Confirm-Action "Enable code-review-graph?" $true
-
-    # Step 5: RTK
-    Write-Host "`n" + "="*60
-    Write-Host "Step 5: RTK (Rust Token Killer)"
-    Write-Host "="*60
-    $enableRtk = Confirm-Action "Enable RTK?" $true
-    $forceRtk = $false
-    if ($enableRtk) {
-        $forceRtk = Confirm-Action "Force re-download RTK even if already installed?" $false
-    }
-
-    # Step 6: Editors
-    Write-Host "`n" + "="*60
-    Write-Host "Step 6: Editor Configuration"
+    Write-Host "Step 3: Editor Configuration"
     Write-Host "="*60
     Write-Host "Select editors to initialize:"
     Write-Host "  [1] Cursor"
@@ -203,9 +186,25 @@ function Invoke-InteractiveMode {
         break
     }
 
-    # Step 7: Advanced options
+    # Step 4: Code Review Graph (CRG)
     Write-Host "`n" + "="*60
-    Write-Host "Step 7: Advanced Options"
+    Write-Host "Step 4: Code Review Graph (CRG)"
+    Write-Host "="*60
+    $enableCrg = Confirm-Action "Enable code-review-graph?" $true
+
+    # Step 5: RTK (Rust Token Killer)
+    Write-Host "`n" + "="*60
+    Write-Host "Step 5: RTK (Rust Token Killer)"
+    Write-Host "="*60
+    $enableRtk = Confirm-Action "Enable RTK?" $true
+    $forceRtk = $false
+    if ($enableRtk) {
+        $forceRtk = Confirm-Action "Force re-download RTK even if already installed?" $false
+    }
+
+    # Step 6: Advanced Options
+    Write-Host "`n" + "="*60
+    Write-Host "Step 6: Advanced Options"
     Write-Host "="*60
     $skipPull = Confirm-Action "Skip pulling updates for existing repos?" $false
     $skipGraphBuild = Confirm-Action "Skip building code-review-graph?" $false
@@ -219,7 +218,6 @@ function Invoke-InteractiveMode {
     Write-Host "Workspace Root: $workspaceRoot"
     Write-Host "Repositories: $($repos.Count)"
     $repos | ForEach-Object { Write-Host "  $_" }
-    Write-Host "Skills Directory: $skillsDir"
     Write-Host "Code Review Graph: $(if ($enableCrg) { "Enabled" } else { "Disabled" })"
     Write-Host "RTK: $(if ($enableRtk) { "Enabled" } else { "Disabled" })$(if ($forceRtk) { " (force)" })"
     Write-Host "Editors: $($editors -join ', ')"
@@ -235,7 +233,7 @@ function Invoke-InteractiveMode {
     }
 
     # Call bootstrap-workspace with the collected parameters
-    bootstrap-workspace -WorkspaceRoot $workspaceRoot -Repo $repos -SkillsDir $skillsDir `
+    bootstrap-workspace -WorkspaceRoot $workspaceRoot -Repo $repos `
         -EnableCrg:$enableCrg -DisableCrg:(-not $enableCrg) `
         -EnableRtk:$enableRtk -DisableRtk:(-not $enableRtk) -ForceRtk:$forceRtk `
         -Editor $editors `

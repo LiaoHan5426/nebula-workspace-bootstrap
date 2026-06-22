@@ -128,12 +128,17 @@ run_interactive() {
     echo "================================================================"
     echo "Step 2: Repository Configuration"
     echo "================================================================"
+    echo "Enter Git repository URLs. You can use format:"
+    echo "  - Simple URL: https://github.com/user/repo.git"
+    echo "  - Full spec:  name=xxx,url=xxx,dir=xxx,alias=xxx"
+    echo "  (Leave empty when done)"
+    
     REPOS=()
     while true; do
         echo ""
         echo "Repository $((${#REPOS[@]} + 1)):"
-        url=$(read_with_default "  Git repository URL")
-        if [ -z "$url" ]; then
+        user_input=$(read_with_default "  Git repository URL or spec")
+        if [ -z "$user_input" ]; then
             if [ ${#REPOS[@]} -gt 0 ]; then
                 break
             fi
@@ -141,57 +146,25 @@ run_interactive() {
             continue
         fi
         
-        name=$(read_with_default "  Repository name (default: derived from URL)")
-        repo_dir=$(read_with_default "  Local directory name (default: same as name)")
-        alias=$(read_with_default "  CRG alias (default: same as name)")
-        skills=$(read_with_default "  Skills directory (default: agent-skills)" "agent-skills")
+        # Check if it's a simple URL or full spec
+        if [[ "$user_input" != *"="* ]]; then
+            # Simple URL - parse to get name
+            name=$(basename "$user_input" .git)
+            repo_dir="$name"
+            alias="$name"
+            spec="name=$name,url=$user_input,dir=$repo_dir,alias=$alias"
+        else
+            spec="$user_input"
+        fi
         
-        spec_parts=("url=$url")
-        [ -n "$name" ] && spec_parts+=("name=$name")
-        [ -n "$repo_dir" ] && spec_parts+=("dir=$repo_dir")
-        [ -n "$alias" ] && spec_parts+=("alias=$alias")
-        [ "$skills" != "agent-skills" ] && spec_parts+=("skills=$skills")
-        
-        REPOS+=("$(IFS=,; echo "${spec_parts[*]}")")
+        REPOS+=("$spec")
         
         if [ "$(confirm "Add another repository?" false)" = "false" ]; then
             break
         fi
     done
 
-    # Step 3: Skills directory (global)
-    echo ""
-    echo "================================================================"
-    echo "Step 3: Skills Directory"
-    echo "================================================================"
-    SKILLS_DIR=$(read_with_default "Default skills directory in repositories" "agent-skills")
-
-    # Step 4: Code Review Graph
-    echo ""
-    echo "================================================================"
-    echo "Step 4: Code Review Graph (CRG)"
-    echo "================================================================"
-    if [ "$(confirm "Enable code-review-graph?" true)" = "true" ]; then
-        ENABLE_CRG="true"
-    else
-        ENABLE_CRG="false"
-    fi
-
-    # Step 5: RTK
-    echo ""
-    echo "================================================================"
-    echo "Step 5: RTK (Rust Token Killer)"
-    echo "================================================================"
-    if [ "$(confirm "Enable RTK?" true)" = "true" ]; then
-        ENABLE_RTK="true"
-        if [ "$(confirm "Force re-download RTK even if already installed?" false)" = "true" ]; then
-            FORCE_RTK="--force-rtk"
-        fi
-    else
-        ENABLE_RTK="false"
-    fi
-
-    # Step 6: Editors
+    # Step 3: Editor Configuration
     echo ""
     echo "================================================================"
     echo "Step 6: Editor Configuration"
@@ -211,10 +184,35 @@ run_interactive() {
         esac
     done
 
-    # Step 7: Advanced options
+    # Step 4: Code Review Graph (CRG)
     echo ""
     echo "================================================================"
-    echo "Step 7: Advanced Options"
+    echo "Step 4: Code Review Graph (CRG)"
+    echo "================================================================"
+    if [ "$(confirm "Enable code-review-graph?" true)" = "true" ]; then
+        ENABLE_CRG="true"
+    else
+        ENABLE_CRG="false"
+    fi
+
+    # Step 5: RTK (Rust Token Killer)
+    echo ""
+    echo "================================================================"
+    echo "Step 5: RTK (Rust Token Killer)"
+    echo "================================================================"
+    if [ "$(confirm "Enable RTK?" true)" = "true" ]; then
+        ENABLE_RTK="true"
+        if [ "$(confirm "Force re-download RTK even if already installed?" false)" = "true" ]; then
+            FORCE_RTK="--force-rtk"
+        fi
+    else
+        ENABLE_RTK="false"
+    fi
+
+    # Step 6: Advanced options
+    echo ""
+    echo "================================================================"
+    echo "Step 6: Advanced Options"
     echo "================================================================"
     if [ "$(confirm "Skip pulling updates for existing repos?" false)" = "true" ]; then
         SKIP_PULL="--skip-pull"
@@ -239,7 +237,6 @@ run_interactive() {
     for repo in "${REPOS[@]}"; do
         echo "  $repo"
     done
-    echo "Skills Directory: $SKILLS_DIR"
     echo "Code Review Graph: $(if [ "$ENABLE_CRG" = "true" ]; then echo "Enabled"; else echo "Disabled"; fi)"
     echo "RTK: $(if [ "$ENABLE_RTK" = "true" ]; then echo "Enabled"; else echo "Disabled"; fi)$(if [ -n "$FORCE_RTK" ]; then echo " (force)"; fi)"
     echo "Editors: ${EDITORS[*]}"

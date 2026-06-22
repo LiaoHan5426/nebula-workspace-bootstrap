@@ -171,9 +171,15 @@ def interactive_mode(manifest_path: Path) -> dict:
             break
         print("Please enter 1, 2, or 3")
     
-    # Step 4: RTK
+    # Step 4: Code Review Graph (CRG)
     print("\n" + "="*60)
-    print("Step 4: RTK Configuration")
+    print("Step 4: Code Review Graph (CRG)")
+    print("="*60)
+    config["skip_graph_build"] = not confirm_action("Build code-review-graph?", True)
+    
+    # Step 5: RTK
+    print("\n" + "="*60)
+    print("Step 5: RTK Configuration")
     print("="*60)
     if confirm_action("Enable RTK installation?", True):
         config["skip_rtk"] = False
@@ -181,12 +187,6 @@ def interactive_mode(manifest_path: Path) -> dict:
     else:
         config["skip_rtk"] = True
         config["force_rtk"] = False
-    
-    # Step 5: Graph build
-    print("\n" + "="*60)
-    print("Step 5: Code Review Graph")
-    print("="*60)
-    config["skip_graph_build"] = not confirm_action("Build code-review-graph?", True)
     
     # Step 6: Advanced options
     print("\n" + "="*60)
@@ -207,8 +207,8 @@ def interactive_mode(manifest_path: Path) -> dict:
     for spec in config['repo_specs']:
         print(f"  {spec}")
     print(f"Editor: {config['editor']}")
-    print(f"RTK: {'Enabled' if not config['skip_rtk'] else 'Disabled'}{' (force)' if config['force_rtk'] else ''}")
     print(f"Build Graph: {'Enabled' if not config['skip_graph_build'] else 'Disabled'}")
+    print(f"RTK: {'Enabled' if not config['skip_rtk'] else 'Disabled'}{' (force)' if config['force_rtk'] else ''}")
     print(f"Skip Pull: {'Yes' if config['skip_pull'] else 'No'}")
     print(f"Install User Hooks: {'Yes' if config['install_user_hooks'] else 'No'}")
     print(f"Force Agents: {'Yes' if config['force_agents'] else 'No'}")

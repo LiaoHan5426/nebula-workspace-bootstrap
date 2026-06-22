@@ -804,63 +804,41 @@ def interactive_mode() -> dict:
     print("\n" + "="*60)
     print("Step 2: Repository Configuration")
     print("="*60)
+    print("Enter Git repository URLs. You can use format:")
+    print("  - Simple URL: https://github.com/user/repo.git")
+    print("  - Full spec:  name=xxx,url=xxx,dir=xxx,alias=xxx")
+    print("  (Leave empty when done)")
+    
     repos = []
     while True:
         print(f"\nRepository {len(repos) + 1}:")
-        url = input("  Git repository URL: ").strip()
-        if not url:
+        user_input = input("  Git repository URL or spec: ").strip()
+        if not user_input:
             if repos:
                 break
             print("Please enter at least one repository URL")
             continue
         
-        name = input_with_default("  Repository name (default: derived from URL)")
-        repo_dir = input_with_default("  Local directory name (default: same as name)")
-        alias = input_with_default("  CRG alias (default: same as name)")
-        skills_dir = input_with_default("  Skills directory (default: agent-skills)", "agent-skills")
+        # Check if it's a simple URL or full spec
+        if "=" not in user_input:
+            # Simple URL - parse to get name
+            name = user_input.split("/")[-1].replace(".git", "")
+            repo_dir = name
+            alias = name
+            spec = f"name={name},url={user_input},dir={repo_dir},alias={alias}"
+        else:
+            spec = user_input
         
-        spec_parts = [f"url={url}"]
-        if name:
-            spec_parts.append(f"name={name}")
-        if repo_dir:
-            spec_parts.append(f"dir={repo_dir}")
-        if alias:
-            spec_parts.append(f"alias={alias}")
-        if skills_dir != "agent-skills":
-            spec_parts.append(f"skills={skills_dir}")
-        
-        repos.append(",".join(spec_parts))
+        repos.append(spec)
         
         if not confirm("Add another repository?", False):
             break
     
     config["repos"] = repos
     
-    # Step 3: Skills directory (global)
+    # Step 3: Editor Configuration
     print("\n" + "="*60)
-    print("Step 3: Skills Directory")
-    print("="*60)
-    config["skills_dir"] = input_with_default("Default skills directory in repositories", "agent-skills")
-    
-    # Step 4: Code Review Graph
-    print("\n" + "="*60)
-    print("Step 4: Code Review Graph (CRG)")
-    print("="*60)
-    config["enable_crg"] = confirm("Enable code-review-graph?", True)
-    
-    # Step 5: RTK
-    print("\n" + "="*60)
-    print("Step 5: RTK (Rust Token Killer)")
-    print("="*60)
-    config["enable_rtk"] = confirm("Enable RTK?", True)
-    if config["enable_rtk"]:
-        config["force_rtk"] = confirm("Force re-download RTK even if already installed?", False)
-    else:
-        config["force_rtk"] = False
-    
-    # Step 6: Editors
-    print("\n" + "="*60)
-    print("Step 6: Editor Configuration")
+    print("Step 3: Editor Configuration")
     print("="*60)
     print("Select editors to initialize (space-separated):")
     print("  [1] Cursor")
@@ -883,9 +861,25 @@ def interactive_mode() -> dict:
             break
         print("Please enter 1, 2, or 3")
     
-    # Step 7: Advanced options
+    # Step 4: Code Review Graph
     print("\n" + "="*60)
-    print("Step 7: Advanced Options")
+    print("Step 4: Code Review Graph (CRG)")
+    print("="*60)
+    config["enable_crg"] = confirm("Enable code-review-graph?", True)
+    
+    # Step 5: RTK
+    print("\n" + "="*60)
+    print("Step 5: RTK (Rust Token Killer)")
+    print("="*60)
+    config["enable_rtk"] = confirm("Enable RTK?", True)
+    if config["enable_rtk"]:
+        config["force_rtk"] = confirm("Force re-download RTK even if already installed?", False)
+    else:
+        config["force_rtk"] = False
+    
+    # Step 6: Advanced options
+    print("\n" + "="*60)
+    print("Step 6: Advanced Options")
     print("="*60)
     config["skip_pull"] = confirm("Skip pulling updates for existing repos?", False)
     config["skip_graph_build"] = confirm("Skip building code-review-graph?", False)
@@ -900,7 +894,6 @@ def interactive_mode() -> dict:
     print(f"Repositories: {len(config['repos'])}")
     for i, repo in enumerate(config['repos'], 1):
         print(f"  {i}. {repo}")
-    print(f"Skills Directory: {config['skills_dir']}")
     print(f"Code Review Graph: {'Enabled' if config['enable_crg'] else 'Disabled'}")
     print(f"RTK: {'Enabled' if config['enable_rtk'] else 'Disabled'}{' (force)' if config['force_rtk'] else ''}")
     print(f"Editors: {', '.join(config['editors'])}")
