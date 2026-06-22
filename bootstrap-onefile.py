@@ -537,6 +537,39 @@ def write_workspace_cursor_assets(workspace_root: Path, venv_dir: Path, *, rtk_h
     write_mcp_config(workspace_root, venv_dir)
 
 
+# Trae IDE hooks configuration
+TRAE_HOOKS_TPL = """{
+  "version": 1,
+  "hooks": {
+    "afterFileEdit": [
+      {
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{HOOKS_DIR}\\\\crg-update.ps1\"",
+        "timeout": 5
+      }
+    ],
+    "sessionStart": [
+      {
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{HOOKS_DIR}\\\\crg-session-start.ps1\"",
+        "timeout": 5
+      }
+    ],
+    "beforeShellExecution": [
+      {
+        "matcher": "^git\\\\s+commit",
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{HOOKS_DIR}\\\\crg-pre-commit.ps1\"",
+        "timeout": 10
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{RTK_DIR}\\\\rtk-hook-cursor.ps1\"",
+        "matcher": "Shell"
+      }
+    ]
+  }
+}
+"""
+
 # Trae IDE configuration
 TRAE_CONFIG_TPL = """{
   "workspace": {
@@ -598,7 +631,7 @@ def write_workspace_trae_assets(workspace_root: Path, repos: List[RepoConfig], v
     for repo in repos:
         folder_entries.append(f'      {{"name": "{repo.workspace_name}", "path": "./{repo.dir}"}}')
         rules_scan_paths.append(f'        "./{repo.dir}/.trae/rules"')
-        skills_scan_paths.append(f'        "./{repo.dir}/{repo.skills_dir}/skills"')
+        skills_scan_paths.append(f'        "./{repo.dir}/.trae/skills"')
     
     folder_entries.append('      {"name": "architecture", "path": "./architecture"}')
     rules_scan_paths.append('        "./architecture"')
@@ -607,6 +640,7 @@ def write_workspace_trae_assets(workspace_root: Path, repos: List[RepoConfig], v
     python_path = str(venv_python(venv)).replace("\\", "\\\\")
     crg_executable = str(venv / "Scripts" / "code-review-graph.exe").replace("\\", "\\\\")
 
+    # Write workspace.json
     content = TRAE_CONFIG_TPL
     content = content.replace("{FOLDER_ENTRIES}", ",\n".join(folder_entries))
     content = content.replace("{PYTHON_PATH}", python_path)
@@ -617,6 +651,43 @@ def write_workspace_trae_assets(workspace_root: Path, repos: List[RepoConfig], v
     config_path = trae_dir / "workspace.json"
     config_path.write_text(content, encoding="utf-8")
     print(f"[trae] wrote workspace config at {config_path}")
+
+    # Write hooks.json
+    cursor_hooks_dir = workspace_root / ".cursor" / "hooks"
+    cursor_rtk_dir = workspace_root / ".cursor" / "rtk"
+    trae_hooks_dir = trae_dir / "hooks"
+    trae_rtk_dir = trae_dir / "rtk"
+    
+    # Copy hooks from .cursor/hooks to .trae/hooks
+    if cursor_hooks_dir.is_dir():
+        trae_hooks_dir.mkdir(parents=True, exist_ok=True)
+        for hook_file in cursor_hooks_dir.glob("*.ps1"):
+            shutil.copy2(hook_file, trae_hooks_dir / hook_file.name)
+        # Copy bash-fallback directory
+        bash_fallback_dir = cursor_hooks_dir / "bash-fallback"
+        if bash_fallback_dir.is_dir():
+            dest_bash_fallback = trae_hooks_dir / "bash-fallback"
+            dest_bash_fallback.mkdir(parents=True, exist_ok=True)
+            for bash_file in bash_fallback_dir.glob("*.sh"):
+                shutil.copy2(bash_file, dest_bash_fallback / bash_file.name)
+    
+    # Copy RTK from .cursor/rtk to .trae/rtk
+    if cursor_rtk_dir.is_dir():
+        trae_rtk_dir.mkdir(parents=True, exist_ok=True)
+        for rtk_file in cursor_rtk_dir.glob("*"):
+            if rtk_file.is_file():
+                shutil.copy2(rtk_file, trae_rtk_dir / rtk_file.name)
+    
+    # Write hooks.json
+    hooks_dir = str(trae_hooks_dir).replace("\\", "\\\\")
+    rtk_dir = str(trae_rtk_dir).replace("\\", "\\\\")
+    hooks_content = TRAE_HOOKS_TPL
+    hooks_content = hooks_content.replace("{HOOKS_DIR}", hooks_dir)
+    hooks_content = hooks_content.replace("{RTK_DIR}", rtk_dir)
+    
+    hooks_path = trae_dir / "hooks.json"
+    hooks_path.write_text(hooks_content, encoding="utf-8")
+    print(f"[trae] wrote hooks config at {hooks_path}")
 
 
 def sync_agent_skills_rules_to_editor(workspace_root: Path, repos: List[RepoConfig], editors: List[str]) -> None:
