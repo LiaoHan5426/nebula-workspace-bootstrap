@@ -34,7 +34,7 @@ Usage:
         -Editor "trae"
     
     # Remote execution
-    irm https://raw.githubusercontent.com/your-org/workspace-bootstrap/main/bootstrap-onefile.ps1 | iex; `
+    irm https://raw.githubusercontent.com/LiaoHan5426/nebula-workspace-bootstrap/master/bootstrap-onefile.ps1 | iex; `
         bootstrap-workspace -WorkspaceRoot "f:\path\to\workspace" -Repo "https://github.com/user/repo.git"
 
 Parameters:
@@ -81,7 +81,7 @@ param(
     [switch]$Force,
     [switch]$Yes,
     
-    [string]$BootstrapUrl = "https://raw.githubusercontent.com/your-org/workspace-bootstrap/main/bootstrap-onefile.py"
+    [string]$BootstrapUrl = "https://raw.githubusercontent.com/LiaoHan5426/nebula-workspace-bootstrap/master/bootstrap-onefile.py"
 )
 
 function Read-InputWithDefault {
@@ -268,7 +268,7 @@ function bootstrap-workspace {
         [switch]$Force,
         [switch]$Yes,
         
-        [string]$BootstrapUrl = "https://raw.githubusercontent.com/your-org/workspace-bootstrap/main/bootstrap-onefile.py"
+        [string]$BootstrapUrl = "https://raw.githubusercontent.com/LiaoHan5426/nebula-workspace-bootstrap/master/bootstrap-onefile.py"
     )
     
     $ErrorActionPreference = "Stop"
