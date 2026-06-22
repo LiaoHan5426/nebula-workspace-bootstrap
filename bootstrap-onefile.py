@@ -603,11 +603,14 @@ def write_workspace_trae_assets(workspace_root: Path, repos: List[RepoConfig], v
     
     for repo in repos:
         folder_entries.append(f'      {{"name": "{repo.workspace_name}", "path": "./{repo.dir}"}}')
+        # Rules: sync to .trae/rules (Trae uses .md extension)
         rules_scan_paths.append(f'        "./{repo.dir}/.trae/rules"')
-        skills_scan_paths.append(f'        "./{repo.dir}/.trae/skills"')
+        # Skills: point directly to agent-skills/skills (no need to copy)
+        skills_scan_paths.append(f'        "./{repo.dir}/{repo.skills_dir}/skills"')
     
     folder_entries.append('      {"name": "architecture", "path": "./architecture"}')
     rules_scan_paths.append('        "./architecture"')
+    skills_scan_paths.append('        "./architecture/agent-skills/skills"')
 
     venv = venv_dir or (workspace_root / ".venv")
     python_path = str(venv_python(venv)).replace("\\", "\\\\")
@@ -694,9 +697,8 @@ def sync_agent_skills_rules_to_editor(workspace_root: Path, repos: List[RepoConf
                         # Trae uses .md extension
                         dest_name = src.name if src.suffix == ".md" else src.stem + ".md"
                         dest_path = rules_dest / dest_name
-                        # Replace agent-skills/skills path with .trae/skills
+                        # Keep original path (agent-skills/skills/) - Trae points to agent-skills/skills directly
                         content = src.read_text(encoding="utf-8")
-                        content = content.replace("agent-skills/skills/", ".trae/skills/")
                         dest_path.write_text(content, encoding="utf-8")
                     print(f"[rules] {repo.key}: synced {len(all_rule_files)} rule(s) to Trae")
             else:
@@ -705,12 +707,15 @@ def sync_agent_skills_rules_to_editor(workspace_root: Path, repos: List[RepoConf
             print(f"[rules] skip {repo.key}: missing {rules_src_dir}")
         
         # Sync skills (SKILL.md files)
+        # Note: Skills are NOT copied to .cursor/.trae directories.
+        # Instead, the workspace.json scanPaths point directly to agent-skills/skills.
+        # This allows AGENTS.md to be shared across IDEs without duplication.
         skills_src_dir = repo_path / repo.skills_dir / "skills"
         if skills_src_dir.is_dir():
             skill_dirs = sorted(skills_src_dir.glob("*"))
             skill_dirs = [d for d in skill_dirs if d.is_dir()]
             if skill_dirs:
-                # Sync skills to Cursor
+                # Only sync skills to Cursor (if Cursor requires it)
                 if "cursor" in editors:
                     skills_dest = repo_path / ".cursor" / "skills"
                     skills_dest.mkdir(parents=True, exist_ok=True)
@@ -721,18 +726,10 @@ def sync_agent_skills_rules_to_editor(workspace_root: Path, repos: List[RepoConf
                         if skill_file.exists():
                             shutil.copy2(skill_file, dest_dir / "SKILL.md")
                     print(f"[skills] {repo.key}: synced {len(skill_dirs)} skill(s) to Cursor")
-
-                # Sync skills to Trae
+                
+                # Trae: skills point to agent-skills/skills directly (no copy needed)
                 if "trae" in editors:
-                    skills_dest = repo_path / ".trae" / "skills"
-                    skills_dest.mkdir(parents=True, exist_ok=True)
-                    for skill_dir in skill_dirs:
-                        dest_dir = skills_dest / skill_dir.name
-                        dest_dir.mkdir(parents=True, exist_ok=True)
-                        skill_file = skill_dir / "SKILL.md"
-                        if skill_file.exists():
-                            shutil.copy2(skill_file, dest_dir / "SKILL.md")
-                    print(f"[skills] {repo.key}: synced {len(skill_dirs)} skill(s) to Trae")
+                    print(f"[skills] {repo.key}: {len(skill_dirs)} skill(s) available at {skills_src_dir} (referenced in workspace.json)")
             else:
                 print(f"[skills] skip {repo.key}: no skill directories")
         else:
