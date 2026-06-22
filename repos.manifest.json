@@ -1,0 +1,19 @@
+{
+  "$schema": "https://example.com/nebula-workspace-bootstrap/repos.manifest.schema.json",
+  "defaultWorkspaceName": "nebula-workspace",
+  "extraFolders": [
+    {
+      "name": "architecture",
+      "path": "architecture"
+    },
+    {
+      "name": "cursor setting",
+      "path": ".cursor"
+    }
+  ],
+  "rtk": {
+    "installDir": ".cursor/rtk",
+    "githubRepo": "rtk-ai/rtk",
+    "initInRepos": []
+  }
+}
