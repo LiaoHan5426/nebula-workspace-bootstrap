@@ -350,16 +350,18 @@ function bootstrap-workspace {
     }
 }
 
-# If called with -Interactive or no parameters, run interactive mode
-if ($Interactive -or (-not $PSBoundParameters.ContainsKey('WorkspaceRoot'))) {
+# Main entry point logic
+$hasParams = $PSBoundParameters.Count -gt 0
+
+if ($Interactive) {
+    # Explicitly requested interactive mode
     Invoke-InteractiveMode
 }
-# If called with WorkspaceRoot parameter, execute immediately
 elseif ($PSBoundParameters.ContainsKey('WorkspaceRoot')) {
+    # Has workspace root parameter - execute immediately
     bootstrap-workspace @PSBoundParameters
 }
-
-# For remote execution (irm | iex), always run interactive mode if no parameters
-if (-not $PSBoundParameters.ContainsKey('WorkspaceRoot') -and -not $Interactive) {
+elseif (-not $hasParams) {
+    # No parameters at all - run interactive mode (for direct script execution or remote irm | iex)
     Invoke-InteractiveMode
 }
