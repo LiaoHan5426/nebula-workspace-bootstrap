@@ -358,3 +358,8 @@ if ($Interactive -or (-not $PSBoundParameters.ContainsKey('WorkspaceRoot'))) {
 elseif ($PSBoundParameters.ContainsKey('WorkspaceRoot')) {
     bootstrap-workspace @PSBoundParameters
 }
+
+# For remote execution (irm | iex), always run interactive mode if no parameters
+if (-not $PSBoundParameters.ContainsKey('WorkspaceRoot') -and -not $Interactive) {
+    Invoke-InteractiveMode
+}
