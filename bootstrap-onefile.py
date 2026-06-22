@@ -604,8 +604,8 @@ def write_workspace_trae_assets(workspace_root: Path, repos: List[RepoConfig], v
     rules_scan_paths.append('        "./architecture"')
 
     venv = venv_dir or (workspace_root / ".venv")
-    python_path = str(venv_python(venv))
-    crg_executable = str(venv / "Scripts" / "code-review-graph.exe")
+    python_path = str(venv_python(venv)).replace("\\", "\\\\")
+    crg_executable = str(venv / "Scripts" / "code-review-graph.exe").replace("\\", "\\\\")
 
     content = TRAE_CONFIG_TPL
     content = content.replace("{FOLDER_ENTRIES}", ",\n".join(folder_entries))
