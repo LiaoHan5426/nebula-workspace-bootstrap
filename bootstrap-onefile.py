@@ -663,6 +663,9 @@ def sync_agent_skills_rules_to_editor(workspace_root: Path, repos: List[RepoConf
                 if "cursor" in editors:
                     rules_dest = repo_path / ".cursor" / "rules"
                     rules_dest.mkdir(parents=True, exist_ok=True)
+                    # Clean up old .md files that should be .mdc
+                    for old_md in rules_dest.glob("*.md"):
+                        old_md.unlink()
                     for src in all_rule_files:
                         # Always copy as .mdc for consistency
                         dest_name = src.name if src.suffix == ".mdc" else src.stem + ".mdc"
@@ -670,13 +673,19 @@ def sync_agent_skills_rules_to_editor(workspace_root: Path, repos: List[RepoConf
                         # Remove old file if it exists with different extension
                         if dest_path.exists():
                             dest_path.unlink()
-                        shutil.copy2(src, dest_path)
+                        # Replace agent-skills/skills path with .cursor/skills
+                        content = src.read_text(encoding="utf-8")
+                        content = content.replace("agent-skills/skills/", ".cursor/skills/")
+                        dest_path.write_text(content, encoding="utf-8")
                     print(f"[rules] {repo.key}: synced {len(all_rule_files)} rule(s) to Cursor")
 
                 # Sync rules to Trae
                 if "trae" in editors:
                     rules_dest = repo_path / ".trae" / "rules"
                     rules_dest.mkdir(parents=True, exist_ok=True)
+                    # Clean up old .md files that should be .mdc
+                    for old_md in rules_dest.glob("*.md"):
+                        old_md.unlink()
                     for src in all_rule_files:
                         # Always copy as .mdc for consistency
                         dest_name = src.name if src.suffix == ".mdc" else src.stem + ".mdc"
@@ -684,7 +693,10 @@ def sync_agent_skills_rules_to_editor(workspace_root: Path, repos: List[RepoConf
                         # Remove old file if it exists with different extension
                         if dest_path.exists():
                             dest_path.unlink()
-                        shutil.copy2(src, dest_path)
+                        # Replace agent-skills/skills path with .trae/skills
+                        content = src.read_text(encoding="utf-8")
+                        content = content.replace("agent-skills/skills/", ".trae/skills/")
+                        dest_path.write_text(content, encoding="utf-8")
                     print(f"[rules] {repo.key}: synced {len(all_rule_files)} rule(s) to Trae")
             else:
                 print(f"[rules] skip {repo.key}: no .mdc or .md files")
