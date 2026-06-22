@@ -642,28 +642,52 @@ def sync_agent_skills_rules_to_editor(workspace_root: Path, repos: List[RepoConf
     for repo in repos:
         repo_path = workspace_root / repo.dir
         
-        # Sync rules (.mdc files)
+        # Sync rules (.mdc and .md files)
         rules_src_dir = repo_path / repo.skills_dir / "rules"
         if rules_src_dir.is_dir():
+            # Support both .mdc and .md extensions for rules
             mdc_files = sorted(rules_src_dir.glob("*.mdc"))
-            if mdc_files:
+            md_files = sorted(rules_src_dir.glob("*.md"))
+            all_rule_files = list(mdc_files)
+            
+            # Add .md files that don't have corresponding .mdc files
+            for md_file in md_files:
+                mdc_version = md_file.with_suffix(".mdc")
+                if mdc_version not in mdc_files:
+                    all_rule_files.append(md_file)
+            
+            all_rule_files = sorted(all_rule_files)
+            
+            if all_rule_files:
                 # Sync rules to Cursor
                 if "cursor" in editors:
                     rules_dest = repo_path / ".cursor" / "rules"
                     rules_dest.mkdir(parents=True, exist_ok=True)
-                    for src in mdc_files:
-                        shutil.copy2(src, rules_dest / src.name)
-                    print(f"[rules] {repo.key}: synced {len(mdc_files)} rule(s) to Cursor")
+                    for src in all_rule_files:
+                        # Always copy as .mdc for consistency
+                        dest_name = src.name if src.suffix == ".mdc" else src.stem + ".mdc"
+                        dest_path = rules_dest / dest_name
+                        # Remove old file if it exists with different extension
+                        if dest_path.exists():
+                            dest_path.unlink()
+                        shutil.copy2(src, dest_path)
+                    print(f"[rules] {repo.key}: synced {len(all_rule_files)} rule(s) to Cursor")
 
                 # Sync rules to Trae
                 if "trae" in editors:
                     rules_dest = repo_path / ".trae" / "rules"
                     rules_dest.mkdir(parents=True, exist_ok=True)
-                    for src in mdc_files:
-                        shutil.copy2(src, rules_dest / src.name)
-                    print(f"[rules] {repo.key}: synced {len(mdc_files)} rule(s) to Trae")
+                    for src in all_rule_files:
+                        # Always copy as .mdc for consistency
+                        dest_name = src.name if src.suffix == ".mdc" else src.stem + ".mdc"
+                        dest_path = rules_dest / dest_name
+                        # Remove old file if it exists with different extension
+                        if dest_path.exists():
+                            dest_path.unlink()
+                        shutil.copy2(src, dest_path)
+                    print(f"[rules] {repo.key}: synced {len(all_rule_files)} rule(s) to Trae")
             else:
-                print(f"[rules] skip {repo.key}: no .mdc files")
+                print(f"[rules] skip {repo.key}: no .mdc or .md files")
         else:
             print(f"[rules] skip {repo.key}: missing {rules_src_dir}")
         
