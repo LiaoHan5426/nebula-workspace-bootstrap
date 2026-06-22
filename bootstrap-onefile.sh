@@ -24,6 +24,10 @@
 #         --repo name=repo2,url=https://github.com/user/repo2.git,skills=custom-skills \
 #         --skills-dir custom-skills
 #     
+#     # Clone specific branch
+#     ./bootstrap-onefile.sh --workspace-root /path/to/workspace \
+#         --repo https://github.com/user/repo.git,branch=development
+#     
 #     # Disable CRG and RTK
 #     ./bootstrap-onefile.sh --workspace-root /path/to/workspace \
 #         --repo https://github.com/user/repo.git \
@@ -42,7 +46,7 @@
 #     --interactive        Run in interactive mode
 #     --workspace-root     Required. Path to workspace root directory
 #     --repo              Required. Git repo URL (can be multiple)
-#                         Format: URL or name=xxx,url=xxx,dir=xxx,alias=xxx,skills=xxx
+#                         Format: URL or name=xxx,url=xxx,dir=xxx,alias=xxx,skills=xxx,branch=xxx
 #     --skills-dir        Default SKILLS directory name in repositories (default: agent-skills)
 #     --enable-crg        Enable code-review-graph (default)
 #     --disable-crg       Disable code-review-graph
@@ -130,7 +134,8 @@ run_interactive() {
     echo "================================================================"
     echo "Enter Git repository URLs. You can use format:"
     echo "  - Simple URL: https://github.com/user/repo.git"
-    echo "  - Full spec:  name=xxx,url=xxx,dir=xxx,alias=xxx"
+    echo "  - With branch: https://github.com/user/repo.git,branch=development"
+    echo "  - Full spec:  name=xxx,url=xxx,dir=xxx,alias=xxx,branch=xxx"
     echo "  (Leave empty when done)"
     
     REPOS=()
@@ -152,8 +157,21 @@ run_interactive() {
             name=$(basename "$user_input" .git)
             repo_dir="$name"
             alias="$name"
-            spec="name=$name,url=$user_input,dir=$repo_dir,alias=$alias"
+            # Ask for branch
+            branch=$(read_with_default "  Branch (default: repo default branch)")
+            if [ -n "$branch" ]; then
+                spec="name=$name,url=$user_input,dir=$repo_dir,alias=$alias,branch=$branch"
+            else
+                spec="name=$name,url=$user_input,dir=$repo_dir,alias=$alias"
+            fi
         else
+            # Check if branch is already specified
+            if [[ "$user_input" != *"branch="* ]]; then
+                branch=$(read_with_default "  Branch (default: repo default branch)")
+                if [ -n "$branch" ]; then
+                    user_input="$user_input,branch=$branch"
+                fi
+            fi
             spec="$user_input"
         fi
         

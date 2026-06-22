@@ -23,6 +23,10 @@ Usage:
         -Repo @("https://github.com/user/repo1.git", "name=repo2,url=https://github.com/user/repo2.git,skills=custom-skills") `
         -SkillsDir "agent-skills"
     
+    # Clone specific branch
+    .\bootstrap-onefile.ps1 -WorkspaceRoot "f:\path\to\workspace" `
+        -Repo "https://github.com/user/repo.git,branch=development"
+    
     # Disable CRG and RTK
     .\bootstrap-onefile.ps1 -WorkspaceRoot "f:\path\to\workspace" `
         -Repo "https://github.com/user/repo.git" `
@@ -41,7 +45,7 @@ Parameters:
     -Interactive        Run in interactive mode (no other params needed)
     -WorkspaceRoot      Required. Path to workspace root directory
     -Repo               Required. Git repo URL(s). Can be a single string or array.
-                       Format: URL or name=xxx,url=xxx,dir=xxx,alias=xxx,skills=xxx
+                       Format: URL or name=xxx,url=xxx,dir=xxx,alias=xxx,skills=xxx,branch=xxx
     -SkillsDir          Default SKILLS directory name in repositories (default: agent-skills)
     -EnableCrg          Enable code-review-graph (default)
     -DisableCrg         Disable code-review-graph
@@ -133,7 +137,8 @@ function Invoke-InteractiveMode {
     Write-Host "$('='*60)"
     Write-Host "Enter Git repository URLs. You can use format:"
     Write-Host "  - Simple URL: https://github.com/user/repo.git"
-    Write-Host "  - Full spec:  name=xxx,url=xxx,dir=xxx,alias=xxx"
+    Write-Host "  - With branch: https://github.com/user/repo.git,branch=development"
+    Write-Host "  - Full spec:  name=xxx,url=xxx,dir=xxx,alias=xxx,branch=xxx"
     Write-Host "  (Leave empty when done)"
     
     $repos = @()
@@ -154,8 +159,21 @@ function Invoke-InteractiveMode {
             $name = $input -replace ".*/", "" -replace "\.git$", ""
             $repoDir = $name
             $alias = $name
-            $spec = "name=$name,url=$input,dir=$repoDir,alias=$alias"
+            # Ask for branch
+            $branch = Read-InputWithDefault "  Branch (default: repo default branch)"
+            if ($branch) {
+                $spec = "name=$name,url=$input,dir=$repoDir,alias=$alias,branch=$branch"
+            } else {
+                $spec = "name=$name,url=$input,dir=$repoDir,alias=$alias"
+            }
         } else {
+            # Check if branch is already specified
+            if ($input -notmatch "branch=") {
+                $branch = Read-InputWithDefault "  Branch (default: repo default branch)"
+                if ($branch) {
+                    $input = "$input,branch=$branch"
+                }
+            }
             $spec = $input
         }
         
