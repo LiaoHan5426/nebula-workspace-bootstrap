@@ -365,7 +365,8 @@ Examples:
         )
 
         # Sync editor-specific rules
-        sync_agent_skills_rules_to_editor(workspace_root, repos)
+        editors = [args.editor] if args.editor else ["cursor"]
+        sync_agent_skills_rules_to_editor(workspace_root, repos, editors)
 
         # Setup RTK
         rtk_hook = setup_rtk(

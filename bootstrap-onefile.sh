@@ -479,6 +479,9 @@ done
 
 echo "Running bootstrap with args: ${ARGS[*]}"
 
+# Set environment variable for templates directory
+export NEBULA_TEMPLATES_DIR="$TEMPLATES_DIR"
+
 # Run bootstrap script
 "$PYTHON" "$BOOTSTRAP_FILE" "${ARGS[@]}"
 

@@ -391,6 +391,9 @@ function bootstrap-workspace {
         
         Write-Host "Running bootstrap with args: $fullArgs" -ForegroundColor Cyan
         
+        # Set environment variable for templates directory
+        $env:NEBULA_TEMPLATES_DIR = $templatesDir
+        
         # Run bootstrap script
         $process = Start-Process -FilePath $python.Source -ArgumentList $fullArgs -WorkingDirectory $tempDir -Wait -PassThru -NoNewWindow
         if ($process.ExitCode -ne 0) {

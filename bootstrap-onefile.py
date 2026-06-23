@@ -297,16 +297,24 @@ def rtk_cursor_hook_command(hook_script: Path) -> str:
     return bash_hook_command(bash_exe, hook_script)
 
 
+def get_templates_dir() -> Path:
+    env_templates = os.environ.get("NEBULA_TEMPLATES_DIR")
+    if env_templates and Path(env_templates).is_dir():
+        return Path(env_templates)
+    if __name__ == "__main__":
+        if hasattr(sys, '_MEIPASS'):
+            return Path(sys._MEIPASS) / "templates"
+        if __file__ == "<stdin>" or __file__ == "-":
+            return Path(tempfile.gettempdir()) / "templates"
+    return Path(__file__).resolve().parent / "templates"
+
+
 def get_template_content(template_path: str) -> str:
-    templates_dir = Path(__file__).resolve().parent / "templates"
+    templates_dir = get_templates_dir()
     file_path = templates_dir / template_path
     if file_path.exists():
         return file_path.read_text(encoding="utf-8")
-    raise FileNotFoundError(f"Template not found: {template_path}")
-
-
-def get_templates_dir() -> Path:
-    return Path(__file__).resolve().parent / "templates"
+    raise FileNotFoundError(f"Template not found: {file_path}")
 
 
 def write_rtk_cursor_hook(install_dir: Path, rtk_exe: Path) -> Optional[Path]:
@@ -537,12 +545,12 @@ def write_workspace_trae_assets(workspace_root: Path, repos: List[RepoConfig], v
         folder_entries.append(f'      {{"name": "{repo.workspace_name}", "path": "./{repo.dir}"}}')
         # Rules: sync to .trae/rules (Trae uses .md extension)
         rules_scan_paths.append(f'        "./{repo.dir}/.trae/rules"')
-        # Skills: point directly to agent-skills/skills (no need to copy)
-        skills_scan_paths.append(f'        "./{repo.dir}/{repo.skills_dir}/skills"')
+        # Skills: sync to .trae/skills (same structure as Cursor)
+        skills_scan_paths.append(f'        "./{repo.dir}/.trae/skills"')
     
     folder_entries.append('      {"name": "architecture", "path": "./architecture"}')
     rules_scan_paths.append('        "./architecture"')
-    skills_scan_paths.append('        "./architecture/agent-skills/skills"')
+    skills_scan_paths.append('        "./architecture/.trae/skills"')
 
     venv = venv_dir or (workspace_root / ".venv")
     python_path = str(venv_python(venv)).replace("\\", "\\\\")
@@ -628,8 +636,9 @@ def sync_agent_skills_rules_to_editor(workspace_root: Path, repos: List[RepoConf
                         # Trae uses .md extension
                         dest_name = src.name if src.suffix == ".md" else src.stem + ".md"
                         dest_path = rules_dest / dest_name
-                        # Keep original path (agent-skills/skills/) - Trae points to agent-skills/skills directly
+                        # Replace agent-skills/skills path with .trae/skills to match Cursor structure
                         content = src.read_text(encoding="utf-8")
+                        content = content.replace("agent-skills/skills/", ".trae/skills/")
                         dest_path.write_text(content, encoding="utf-8")
                     print(f"[rules] {repo.key}: synced {len(all_rule_files)} rule(s) to Trae")
             else:
@@ -646,7 +655,7 @@ def sync_agent_skills_rules_to_editor(workspace_root: Path, repos: List[RepoConf
             skill_dirs = sorted(skills_src_dir.glob("*"))
             skill_dirs = [d for d in skill_dirs if d.is_dir()]
             if skill_dirs:
-                # Only sync skills to Cursor (if Cursor requires it)
+                # Sync skills to Cursor
                 if "cursor" in editors:
                     skills_dest = repo_path / ".cursor" / "skills"
                     skills_dest.mkdir(parents=True, exist_ok=True)
@@ -658,9 +667,17 @@ def sync_agent_skills_rules_to_editor(workspace_root: Path, repos: List[RepoConf
                             shutil.copy2(skill_file, dest_dir / "SKILL.md")
                     print(f"[skills] {repo.key}: synced {len(skill_dirs)} skill(s) to Cursor")
                 
-                # Trae: skills point to agent-skills/skills directly (no copy needed)
+                # Sync skills to Trae (same structure as Cursor)
                 if "trae" in editors:
-                    print(f"[skills] {repo.key}: {len(skill_dirs)} skill(s) available at {skills_src_dir} (referenced in workspace.json)")
+                    skills_dest = repo_path / ".trae" / "skills"
+                    skills_dest.mkdir(parents=True, exist_ok=True)
+                    for skill_dir in skill_dirs:
+                        dest_dir = skills_dest / skill_dir.name
+                        dest_dir.mkdir(parents=True, exist_ok=True)
+                        skill_file = skill_dir / "SKILL.md"
+                        if skill_file.exists():
+                            shutil.copy2(skill_file, dest_dir / "SKILL.md")
+                    print(f"[skills] {repo.key}: synced {len(skill_dirs)} skill(s) to Trae")
             else:
                 print(f"[skills] skip {repo.key}: no skill directories")
         else:
