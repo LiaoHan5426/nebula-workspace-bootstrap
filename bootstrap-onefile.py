@@ -297,22 +297,26 @@ def rtk_cursor_hook_command(hook_script: Path) -> str:
     return bash_hook_command(bash_exe, hook_script)
 
 
+def get_template_content(template_path: str) -> str:
+    templates_dir = Path(__file__).resolve().parent / "templates"
+    file_path = templates_dir / template_path
+    if file_path.exists():
+        return file_path.read_text(encoding="utf-8")
+    raise FileNotFoundError(f"Template not found: {template_path}")
+
+
 def get_templates_dir() -> Path:
     return Path(__file__).resolve().parent / "templates"
 
 
 def write_rtk_cursor_hook(install_dir: Path, rtk_exe: Path) -> Optional[Path]:
-    templates_dir = get_templates_dir()
-    rtk_templates_dir = templates_dir / "rtk"
     if os.name == "nt":
         hook_path = install_dir / "rtk-hook-cursor.ps1"
-        template_path = rtk_templates_dir / "rtk-hook-simple.ps1"
-        content = template_path.read_text(encoding="utf-8")
+        content = get_template_content("rtk/rtk-hook-simple.ps1")
         hook_path.write_text(content, encoding="utf-8")
     else:
         hook_path = install_dir / "rtk-hook-cursor.sh"
-        template_path = rtk_templates_dir / "rtk-hook-simple.sh"
-        content = template_path.read_text(encoding="utf-8")
+        content = get_template_content("rtk/rtk-hook-simple.sh")
         content = content.replace("$DIR", str(install_dir))
         hook_path.write_text(content, encoding="utf-8")
         hook_path.chmod(hook_path.stat().st_mode | 0o111)
@@ -413,7 +417,6 @@ def setup_rtk(workspace_root: Path, repos: List[RepoConfig], *, enable_rtk: bool
 
 
 def render_crg_ps1_hooks(crg_exe: str) -> Dict[str, str]:
-    templates_dir = get_templates_dir()
     hooks = {}
     
     hook_files = [
@@ -423,8 +426,7 @@ def render_crg_ps1_hooks(crg_exe: str) -> Dict[str, str]:
     ]
     
     for output_name, template_name in hook_files:
-        template_path = templates_dir / template_name
-        content = template_path.read_text(encoding="utf-8")
+        content = get_template_content(template_name)
         content = content.replace("{{CRG_EXE}}", crg_exe)
         hooks[output_name] = content
     
@@ -511,9 +513,7 @@ def write_workspace_cursor_assets(workspace_root: Path, venv_dir: Path, *, rtk_h
     print(f"[cursor] wrote hooks at {cursor_hooks_json}")
 
     # Write mcp.json to .cursor directory from template
-    templates_dir = get_templates_dir()
-    mcp_template = templates_dir / "mcp.json.tpl"
-    mcp_content = mcp_template.read_text(encoding="utf-8")
+    mcp_content = get_template_content("mcp.json.tpl")
     mcp_content = mcp_content.replace("{{CRG_EXE}}", str(crg_exe).replace("\\", "\\\\"))
     mcp_content = mcp_content.replace("{{WORKSPACE_ROOT}}", str(workspace_root).replace("\\", "\\\\"))
     cursor_mcp_json = cursor_dir / "mcp.json"
@@ -548,10 +548,7 @@ def write_workspace_trae_assets(workspace_root: Path, repos: List[RepoConfig], v
     python_path = str(venv_python(venv)).replace("\\", "\\\\")
 
     # Write workspace.json from template
-    templates_dir = get_templates_dir()
-    trae_templates_dir = templates_dir / "trae"
-    template_path = trae_templates_dir / "workspace.json.tpl"
-    content = template_path.read_text(encoding="utf-8")
+    content = get_template_content("trae/workspace.json.tpl")
     content = content.replace("%FOLDER_ENTRIES%", ",\n".join(folder_entries))
     content = content.replace("%PYTHON_PATH%", python_path)
     content = content.replace("%RULES_SCAN_PATHS%", "[\n" + ",\n".join(rules_scan_paths) + "\n      ]")
@@ -574,8 +571,7 @@ def write_workspace_trae_assets(workspace_root: Path, repos: List[RepoConfig], v
     print(f"[trae] wrote hooks at {trae_hooks_json}")
     
     # Write mcp.json to .trae directory from template
-    mcp_template = templates_dir / "mcp.json.tpl"
-    mcp_content = mcp_template.read_text(encoding="utf-8")
+    mcp_content = get_template_content("mcp.json.tpl")
     mcp_content = mcp_content.replace("{{CRG_EXE}}", str(crg_exe).replace("\\", "\\\\"))
     mcp_content = mcp_content.replace("{{WORKSPACE_ROOT}}", str(workspace_root).replace("\\", "\\\\"))
     trae_mcp_json = trae_dir / "mcp.json"
@@ -708,9 +704,7 @@ def write_architecture_agents(workspace_root: Path, repos: List[RepoConfig], *, 
         shell_chain_tip = "Bash 链式命令用 `&&`："
         shell_fallback_note = ""
 
-    templates_dir = get_templates_dir()
-    template_path = templates_dir / "architecture-AGENTS.md"
-    content = template_path.read_text(encoding="utf-8")
+    content = get_template_content("architecture-AGENTS.md")
     content = content.replace("{{WORKSPACE_ROOT}}", str(workspace_root))
     content = content.replace("{{EDITOR_DIR}}", editor_dir)
     content = content.replace("{{SKILLS_DIR}}", skills_dir)

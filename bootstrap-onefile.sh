@@ -63,7 +63,8 @@
 
 set -euo pipefail
 
-BOOTSTRAP_URL="https://raw.githubusercontent.com/your-org/workspace-bootstrap/main/bootstrap-onefile.py"
+BOOTSTRAP_URL="https://raw.githubusercontent.com/LiaoHan5426/nebula-workspace-bootstrap/master/bootstrap-onefile.py"
+TEMPLATES_URL="https://raw.githubusercontent.com/LiaoHan5426/nebula-workspace-bootstrap/master/templates"
 WORKSPACE_ROOT=""
 REPOS=()
 SKILLS_DIR="agent-skills"
@@ -398,6 +399,52 @@ else
     echo "Error: curl or wget is required to download the bootstrap script" >&2
     exit 1
 fi
+
+# Download templates directory
+echo "Downloading templates from $TEMPLATES_URL..."
+TEMPLATES_DIR="$TEMP_DIR/templates"
+
+# Define template files to download
+TEMPLATE_FILES=(
+    "architecture-AGENTS.md"
+    "mcp.json.tpl"
+    "workspace.code-workspace.json"
+    "crg-update.ps1.tpl"
+    "crg-session-start.ps1.tpl"
+    "crg-pre-commit.ps1.tpl"
+    "rtk/rtk-hook-simple.ps1"
+    "rtk/rtk-hook-simple.sh"
+    "rtk/rtk-hook.ps1"
+    "rtk/rtk-hook.sh"
+    "trae/workspace.json.tpl"
+)
+
+# Create subdirectories
+mkdir -p "$TEMPLATES_DIR/rtk"
+mkdir -p "$TEMPLATES_DIR/trae"
+
+# Download each template file
+for template_file in "${TEMPLATE_FILES[@]}"; do
+    template_url="$TEMPLATES_URL/$template_file"
+    local_path="$TEMPLATES_DIR/$template_file"
+    local_dir=$(dirname "$local_path")
+    if [[ ! -d "$local_dir" ]]; then
+        mkdir -p "$local_dir"
+    fi
+    if command -v curl &>/dev/null; then
+        if curl -sSL "$template_url" -o "$local_path"; then
+            echo "  Downloaded: $template_file" >&2
+        else
+            echo "  Warning: Failed to download template: $template_file" >&2
+        fi
+    elif command -v wget &>/dev/null; then
+        if wget -q "$template_url" -O "$local_path"; then
+            echo "  Downloaded: $template_file" >&2
+        else
+            echo "  Warning: Failed to download template: $template_file" >&2
+        fi
+    fi
+done
 
 # Build arguments
 ARGS=(--workspace-root "$WORKSPACE_ROOT")

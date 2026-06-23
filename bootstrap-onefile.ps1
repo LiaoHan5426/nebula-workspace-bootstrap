@@ -85,7 +85,8 @@ param(
     [switch]$Force,
     [switch]$Yes,
     
-    [string]$BootstrapUrl = "https://raw.githubusercontent.com/LiaoHan5426/nebula-workspace-bootstrap/master/bootstrap-onefile.py"
+    [string]$BootstrapUrl = "https://raw.githubusercontent.com/LiaoHan5426/nebula-workspace-bootstrap/master/bootstrap-onefile.py",
+    [string]$TemplatesUrl = "https://raw.githubusercontent.com/LiaoHan5426/nebula-workspace-bootstrap/master/templates"
 )
 
 function Read-InputWithDefault {
@@ -284,7 +285,8 @@ function bootstrap-workspace {
         [switch]$Force,
         [switch]$Yes,
         
-        [string]$BootstrapUrl = "https://raw.githubusercontent.com/LiaoHan5426/nebula-workspace-bootstrap/master/bootstrap-onefile.py"
+        [string]$BootstrapUrl = "https://raw.githubusercontent.com/LiaoHan5426/nebula-workspace-bootstrap/master/bootstrap-onefile.py",
+        [string]$TemplatesUrl = "https://raw.githubusercontent.com/LiaoHan5426/nebula-workspace-bootstrap/master/templates"
     )
     
     $ErrorActionPreference = "Stop"
@@ -310,6 +312,45 @@ function bootstrap-workspace {
         # Download bootstrap script
         $webClient = New-Object System.Net.WebClient
         $webClient.DownloadFile($BootstrapUrl, $bootstrapFile)
+        
+        # Download templates directory
+        Write-Host "Downloading templates from $TemplatesUrl..." -ForegroundColor Cyan
+        $templatesDir = Join-Path $tempDir "templates"
+        
+        # Define template files to download
+        $templateFiles = @(
+            "architecture-AGENTS.md",
+            "mcp.json.tpl",
+            "workspace.code-workspace.json",
+            "crg-update.ps1.tpl",
+            "crg-session-start.ps1.tpl",
+            "crg-pre-commit.ps1.tpl",
+            "rtk/rtk-hook-simple.ps1",
+            "rtk/rtk-hook-simple.sh",
+            "rtk/rtk-hook.ps1",
+            "rtk/rtk-hook.sh",
+            "trae/workspace.json.tpl"
+        )
+        
+        # Create subdirectories
+        New-Item -ItemType Directory -Path (Join-Path $templatesDir "rtk") -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $templatesDir "trae") -Force | Out-Null
+        
+        # Download each template file
+        foreach ($templateFile in $templateFiles) {
+            $templateUrl = "$TemplatesUrl/$templateFile"
+            $localPath = Join-Path $templatesDir $templateFile
+            $localDir = Split-Path $localPath -Parent
+            if (-not (Test-Path $localDir)) {
+                New-Item -ItemType Directory -Path $localDir -Force | Out-Null
+            }
+            try {
+                $webClient.DownloadFile($templateUrl, $localPath)
+                Write-Host "  Downloaded: $templateFile" -ForegroundColor DarkGray
+            } catch {
+                Write-Warning "Failed to download template: $templateFile"
+            }
+        }
         
         # Build arguments
         $argsList = @("--workspace-root", "`"$WorkspaceRoot`"")
