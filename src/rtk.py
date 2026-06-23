@@ -134,13 +134,13 @@ def rtk_cursor_hook_command(hook_script: Path) -> str:
 
 def write_rtk_cursor_hook(install_dir: Path, rtk_exe: Path) -> Optional[Path]:
     """Write platform-specific RTK preToolUse hook next to the workspace RTK binary."""
-    TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
+    TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates" / "rtk"
     if os.name == "nt":
         hook_path = install_dir / "rtk-hook-cursor.ps1"
-        template = (TEMPLATES_DIR / "rtk-hook-cursor.ps1").read_text(encoding="utf-8")
+        template = (TEMPLATES_DIR / "rtk-hook.ps1").read_text(encoding="utf-8")
     else:
         hook_path = install_dir / "rtk-hook-cursor.sh"
-        template = (TEMPLATES_DIR / "rtk-hook-cursor.sh").read_text(encoding="utf-8")
+        template = (TEMPLATES_DIR / "rtk-hook.sh").read_text(encoding="utf-8")
     hook_path.write_text(template, encoding="utf-8")
     if os.name != "nt":
         hook_path.chmod(hook_path.stat().st_mode | 0o111)

@@ -33,10 +33,10 @@ def is_workspace_already_initialized(workspace_root: Path) -> bool:
     """Check if workspace appears to be already initialized."""
     indicators = [
         workspace_root / ".venv",
-        workspace_root / "nebula",
-        workspace_root / "nebula-studio",
         workspace_root / ".cursor",
+        workspace_root / ".trae",
         workspace_root / "architecture",
+        workspace_root / ".hooks",
     ]
     return sum(1 for indicator in indicators if indicator.exists()) >= 3
 

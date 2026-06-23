@@ -64,6 +64,8 @@ def write_architecture_agents(
     repos: List[RepoConfig],
     *,
     force: bool = False,
+    skills_dir: str = "agent-skills",
+    editor_dir: str = ".cursor",
 ) -> None:
     import os
     arch_dir = workspace_root / "architecture"
@@ -78,22 +80,55 @@ def write_architecture_agents(
         repo_path = workspace_root / repo.dir
         repo_rows.append(f"| `{repo.crg_alias}` | `{repo_path}` |")
 
+    if editor_dir == ".cursor":
+        source_rule_ext = "mdc,.md"
+        editor_rule_ext = "mdc"
+        skills_path_note = "\n> **注意**：同步时会将规则中的 `agent-skills/skills/` 路径替换为 `.cursor/skills/`，以适配 Cursor 的路径解析。"
+    elif editor_dir == ".trae":
+        source_rule_ext = "mdc,.md"
+        editor_rule_ext = "md"
+        skills_path_note = ""
+    else:
+        source_rule_ext = "mdc,.md"
+        editor_rule_ext = "md"
+        skills_path_note = ""
+
+    if os.name == "nt":
+        shell_type = "PowerShell"
+        shell_ext = "ps1"
+        shell_chain_tip = "PowerShell 链式命令用 `;`，不用 `&&`："
+        shell_fallback_note = "- Git for Windows Bash 仅作 CRG 备用（`.hooks/bash-fallback/`），默认不启用"
+    else:
+        shell_type = "Bash"
+        shell_ext = "sh"
+        shell_chain_tip = "Bash 链式命令用 `&&`："
+        shell_fallback_note = ""
+
     content = render_template(
         "architecture-AGENTS.md",
         WORKSPACE_ROOT=str(workspace_root),
+        EDITOR_DIR=editor_dir,
+        SKILLS_DIR=skills_dir,
         REPO_TABLE_ROWS="\n".join(repo_rows),
         CRG_EXE=str(
             (workspace_root / ".venv" / ("Scripts" if os.name == "nt" else "bin") / "code-review-graph").with_suffix(
                 ".exe" if os.name == "nt" else ""
             )
         ),
-        RTK_DIR=str(workspace_root / ".cursor" / "rtk"),
-        RTK_EXE=str(workspace_root / ".cursor" / "rtk" / rtk_binary_name()),
+        RTK_DIR=str(workspace_root / editor_dir / "rtk"),
+        RTK_EXE=str(workspace_root / editor_dir / "rtk" / rtk_binary_name()),
         RTK_HOOK_SCRIPT=(
             "rtk-hook-cursor.ps1"
             if os.name == "nt"
             else "rtk-hook-cursor.sh (requires jq)"
         ),
+        SHELL_TYPE=shell_type,
+        SHELL_EXT=shell_ext,
+        SHELL_CHAIN_TIP=shell_chain_tip,
+        SHELL_FALLBACK_NOTE=shell_fallback_note,
+        SOURCE_RULE_EXT=source_rule_ext,
+        EDITOR_RULE_EXT=editor_rule_ext,
+        SKILLS_PATH_NOTE=skills_path_note,
     )
     agents_path.write_text(content, encoding="utf-8")
     print(f"[architecture] wrote workspace-level AGENTS.md at {agents_path}")

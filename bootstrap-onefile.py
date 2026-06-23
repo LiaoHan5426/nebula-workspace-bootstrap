@@ -297,38 +297,23 @@ def rtk_cursor_hook_command(hook_script: Path) -> str:
     return bash_hook_command(bash_exe, hook_script)
 
 
-RTK_HOOK_PS1 = """param()
-$ErrorActionPreference = "SilentlyContinue"
-$rtkPath = "$PSScriptRoot/rtk.exe"
-if (-not (Test-Path $rtkPath)) {
-    $rtkPath = (Get-Command rtk -ErrorAction SilentlyContinue)?.Source
-}
-if ($rtkPath) {
-    $env:PATH = "$PSScriptRoot;$env:PATH"
-}
-'{"message":"ok","passed":true}'
-"""
-
-RTK_HOOK_SH = """#!/usr/bin/env bash
-set -euo pipefail
-rtk_path="$DIR/rtk"
-if [[ ! -f "$rtk_path" ]]; then
-    rtk_path=$(command -v rtk 2>/dev/null || true)
-fi
-if [[ -n "$rtk_path" ]]; then
-    export PATH="$DIR:$PATH"
-fi
-echo '{"message":"ok","passed":true}'
-"""
+def get_templates_dir() -> Path:
+    return Path(__file__).resolve().parent / "templates"
 
 
 def write_rtk_cursor_hook(install_dir: Path, rtk_exe: Path) -> Optional[Path]:
+    templates_dir = get_templates_dir()
+    rtk_templates_dir = templates_dir / "rtk"
     if os.name == "nt":
         hook_path = install_dir / "rtk-hook-cursor.ps1"
-        hook_path.write_text(RTK_HOOK_PS1, encoding="utf-8")
+        template_path = rtk_templates_dir / "rtk-hook-simple.ps1"
+        content = template_path.read_text(encoding="utf-8")
+        hook_path.write_text(content, encoding="utf-8")
     else:
         hook_path = install_dir / "rtk-hook-cursor.sh"
-        content = RTK_HOOK_SH.replace("$DIR", str(install_dir))
+        template_path = rtk_templates_dir / "rtk-hook-simple.sh"
+        content = template_path.read_text(encoding="utf-8")
+        content = content.replace("$DIR", str(install_dir))
         hook_path.write_text(content, encoding="utf-8")
         hook_path.chmod(hook_path.stat().st_mode | 0o111)
     return hook_path
@@ -428,28 +413,22 @@ def setup_rtk(workspace_root: Path, repos: List[RepoConfig], *, enable_rtk: bool
 
 
 def render_crg_ps1_hooks(crg_exe: str) -> Dict[str, str]:
-    return {
-        "crg-update.ps1": f"""param()
-$ErrorActionPreference = "SilentlyContinue"
-[void][Console]::In.ReadToEnd()
-try {{ & "{crg_exe}" update --skip-flows | Out-Null }} catch {{}}
-'{{"message":"crg update","passed":true}}'
-""",
-        "crg-session-start.ps1": f"""param()
-$ErrorActionPreference = "SilentlyContinue"
-[void][Console]::In.ReadToEnd()
-$output = ""
-try {{ $output = & "{crg_exe}" status 2>&1 | Out-String }} catch {{ $output = "graph not built yet" }}
-@{{ message = $output; passed = $true }} | ConvertTo-Json -Compress
-""",
-        "crg-pre-commit.ps1": f"""param()
-$ErrorActionPreference = "SilentlyContinue"
-[void][Console]::In.ReadToEnd()
-$output = ""
-try {{ $output = & "{crg_exe}" detect-changes --brief 2>&1 | Out-String }} catch {{ $output = "" }}
-@{{ message = $output; passed = $true }} | ConvertTo-Json -Compress
-""",
-    }
+    templates_dir = get_templates_dir()
+    hooks = {}
+    
+    hook_files = [
+        ("crg-update.ps1", "crg-update.ps1.tpl"),
+        ("crg-session-start.ps1", "crg-session-start.ps1.tpl"),
+        ("crg-pre-commit.ps1", "crg-pre-commit.ps1.tpl"),
+    ]
+    
+    for output_name, template_name in hook_files:
+        template_path = templates_dir / template_name
+        content = template_path.read_text(encoding="utf-8")
+        content = content.replace("{{CRG_EXE}}", crg_exe)
+        hooks[output_name] = content
+    
+    return hooks
 
 
 def render_crg_bash_hooks(crg_exe: str, python_exe: str) -> Dict[str, str]:
@@ -531,65 +510,18 @@ def write_workspace_cursor_assets(workspace_root: Path, venv_dir: Path, *, rtk_h
     cursor_hooks_json.write_text(json.dumps(hooks_config, indent=2) + "\n", encoding="utf-8")
     print(f"[cursor] wrote hooks at {cursor_hooks_json}")
 
-    # Write mcp.json to .cursor directory
-    crg_exe_str = str(crg_exe).replace("\\", "\\\\")
-    mcp_config = {
-        "mcpServers": {"code-review-graph": {"command": crg_exe_str, "args": ["serve"], "cwd": str(workspace_root).replace("\\", "\\\\"), "type": "stdio"}}
-    }
+    # Write mcp.json to .cursor directory from template
+    templates_dir = get_templates_dir()
+    mcp_template = templates_dir / "mcp.json.tpl"
+    mcp_content = mcp_template.read_text(encoding="utf-8")
+    mcp_content = mcp_content.replace("{{CRG_EXE}}", str(crg_exe).replace("\\", "\\\\"))
+    mcp_content = mcp_content.replace("{{WORKSPACE_ROOT}}", str(workspace_root).replace("\\", "\\\\"))
     cursor_mcp_json = cursor_dir / "mcp.json"
-    cursor_mcp_json.write_text(json.dumps(mcp_config, indent=2) + "\n", encoding="utf-8")
+    cursor_mcp_json.write_text(mcp_content, encoding="utf-8")
     print(f"[cursor] wrote MCP config at {cursor_mcp_json}")
 
 
-# Trae IDE hooks configuration (reuses workspace-level hooks.json)
-# Note: Trae will use the hooks.json at workspace root, no need for separate template
-TRAE_HOOKS_TPL = """{{
-  "version": 1,
-  "hooks": {HOOKS_CONTENT}
-}}
-"""
 
-# Trae IDE configuration
-TRAE_CONFIG_TPL = """{
-  "workspace": {
-    "name": "nebula-workspace",
-    "folders": [
-      {
-        "name": "workspace",
-        "path": "."
-      },
-      %FOLDER_ENTRIES%
-    ],
-    "settings": {
-      "python.pythonPath": "%PYTHON_PATH%"
-    }
-  },
-  "extensions": {
-    "recommendations": [
-      "rust-lang.rust-analyzer",
-      "dbaeumer.vscode-eslint",
-      "esbenp.prettier-vscode",
-      "redhat.vscode-yaml"
-    ]
-  },
-  "trae": {
-    "rules": {
-      "scanPaths": %RULES_SCAN_PATHS%
-    },
-    "skills": {
-      "scanPaths": %SKILLS_SCAN_PATHS%
-    },
-    "hooks": {
-      "enabled": true,
-      "path": ".trae/hooks.json"
-    },
-    "mcp": {
-      "enabled": true,
-      "configPath": ".trae/mcp.json"
-    }
-  }
-}
-"""
 
 
 def write_workspace_trae_assets(workspace_root: Path, repos: List[RepoConfig], venv_dir: Optional[Path], rtk_hook_command: Optional[str]) -> None:
@@ -615,8 +547,11 @@ def write_workspace_trae_assets(workspace_root: Path, repos: List[RepoConfig], v
     venv = venv_dir or (workspace_root / ".venv")
     python_path = str(venv_python(venv)).replace("\\", "\\\\")
 
-    # Write workspace.json
-    content = TRAE_CONFIG_TPL
+    # Write workspace.json from template
+    templates_dir = get_templates_dir()
+    trae_templates_dir = templates_dir / "trae"
+    template_path = trae_templates_dir / "workspace.json.tpl"
+    content = template_path.read_text(encoding="utf-8")
     content = content.replace("%FOLDER_ENTRIES%", ",\n".join(folder_entries))
     content = content.replace("%PYTHON_PATH%", python_path)
     content = content.replace("%RULES_SCAN_PATHS%", "[\n" + ",\n".join(rules_scan_paths) + "\n      ]")
@@ -638,13 +573,13 @@ def write_workspace_trae_assets(workspace_root: Path, repos: List[RepoConfig], v
     trae_hooks_json.write_text(json.dumps(hooks_config, indent=2) + "\n", encoding="utf-8")
     print(f"[trae] wrote hooks at {trae_hooks_json}")
     
-    # Write mcp.json to .trae directory
-    crg_exe_str = str(crg_exe).replace("\\", "\\\\")
-    mcp_config = {
-        "mcpServers": {"code-review-graph": {"command": crg_exe_str, "args": ["serve"], "cwd": str(workspace_root).replace("\\", "\\\\"), "type": "stdio"}}
-    }
+    # Write mcp.json to .trae directory from template
+    mcp_template = templates_dir / "mcp.json.tpl"
+    mcp_content = mcp_template.read_text(encoding="utf-8")
+    mcp_content = mcp_content.replace("{{CRG_EXE}}", str(crg_exe).replace("\\", "\\\\"))
+    mcp_content = mcp_content.replace("{{WORKSPACE_ROOT}}", str(workspace_root).replace("\\", "\\\\"))
     trae_mcp_json = trae_dir / "mcp.json"
-    trae_mcp_json.write_text(json.dumps(mcp_config, indent=2) + "\n", encoding="utf-8")
+    trae_mcp_json.write_text(mcp_content, encoding="utf-8")
     print(f"[trae] wrote MCP config at {trae_mcp_json}")
 
 
@@ -736,71 +671,7 @@ def sync_agent_skills_rules_to_editor(workspace_root: Path, repos: List[RepoConf
             print(f"[skills] skip {repo.key}: missing {skills_src_dir}")
 
 
-ARCH_AGENTS_TPL = """# Nebula Workspace - Agent Skills
-
-## Overview
-
-This workspace contains the following registered repositories for code review graph:
-
-| Alias | Path |
-|-------|------|
-{{REPO_TABLE_ROWS}}
-
-## Toolchain Configuration
-
-### Code Review Graph (CRG)
-- Executable: `{{CRG_EXE}}`
-- Managed via workspace virtual environment
-
-### RTK (Rust Token Killer)
-- Installation directory: `{{RTK_DIR}}`
-- Executable: `{{RTK_EXE}}`
-- Hook script: `{{RTK_HOOK_SCRIPT}}`
-
-## Usage
-
-### Initialize Workspace
-```bash
-# Clone repositories
-git clone <repo-url>
-
-# Register with CRG
-code-review-graph register <repo-path> --alias <alias>
-code-review-graph build
-code-review-graph postprocess
-```
-
-### RTK Commands
-```bash
-# Build & Compile
-rtk cargo build
-rtk tsc
-rtk lint
-
-# Tests
-rtk cargo test
-rtk jest
-rtk vitest
-
-# Git
-rtk git status
-rtk git diff
-```
-
-## Agent Skills Directory Structure
-
-```
-{{SKILLS_DIR}}/
-├── rules/                    # Rule configurations
-│   └── *.mdc
-└── skills/                   # Skill definitions
-    └── */
-        └── SKILL.md
-```
-"""
-
-
-def write_architecture_agents(workspace_root: Path, repos: List[RepoConfig], *, force: bool = False, skills_dir: str = "agent-skills") -> None:
+def write_architecture_agents(workspace_root: Path, repos: List[RepoConfig], *, force: bool = False, skills_dir: str = "agent-skills", editor_dir: str = ".cursor") -> None:
     arch_dir = workspace_root / "architecture"
     arch_dir.mkdir(parents=True, exist_ok=True)
     agents_path = arch_dir / "AGENTS.md"
@@ -813,12 +684,48 @@ def write_architecture_agents(workspace_root: Path, repos: List[RepoConfig], *, 
         repo_path = workspace_root / repo.dir
         repo_rows.append(f"| `{repo.crg_alias}` | `{repo_path}` |")
 
-    content = ARCH_AGENTS_TPL.replace("{{REPO_TABLE_ROWS}}", "\n".join(repo_rows))
-    content = content.replace("{{CRG_EXE}}", str((workspace_root / ".venv" / ("Scripts" if os.name == "nt" else "bin") / "code-review-graph").with_suffix(".exe" if os.name == "nt" else "")))
-    content = content.replace("{{RTK_DIR}}", str(workspace_root / ".cursor" / "rtk"))
-    content = content.replace("{{RTK_EXE}}", str(workspace_root / ".cursor" / "rtk" / rtk_binary_name()))
-    content = content.replace("{{RTK_HOOK_SCRIPT}}", "rtk-hook-cursor.ps1" if os.name == "nt" else "rtk-hook-cursor.sh")
+    if editor_dir == ".cursor":
+        source_rule_ext = "mdc,.md"
+        editor_rule_ext = "mdc"
+        skills_path_note = "\n> **注意**：同步时会将规则中的 `agent-skills/skills/` 路径替换为 `.cursor/skills/`，以适配 Cursor 的路径解析。"
+    elif editor_dir == ".trae":
+        source_rule_ext = "mdc,.md"
+        editor_rule_ext = "md"
+        skills_path_note = ""
+    else:
+        source_rule_ext = "mdc,.md"
+        editor_rule_ext = "md"
+        skills_path_note = ""
+
+    if os.name == "nt":
+        shell_type = "PowerShell"
+        shell_ext = "ps1"
+        shell_chain_tip = "PowerShell 链式命令用 `;`，不用 `&&`："
+        shell_fallback_note = "- Git for Windows Bash 仅作 CRG 备用（`.hooks/bash-fallback/`），默认不启用"
+    else:
+        shell_type = "Bash"
+        shell_ext = "sh"
+        shell_chain_tip = "Bash 链式命令用 `&&`："
+        shell_fallback_note = ""
+
+    templates_dir = get_templates_dir()
+    template_path = templates_dir / "architecture-AGENTS.md"
+    content = template_path.read_text(encoding="utf-8")
+    content = content.replace("{{WORKSPACE_ROOT}}", str(workspace_root))
+    content = content.replace("{{EDITOR_DIR}}", editor_dir)
     content = content.replace("{{SKILLS_DIR}}", skills_dir)
+    content = content.replace("{{REPO_TABLE_ROWS}}", "\n".join(repo_rows))
+    content = content.replace("{{CRG_EXE}}", str((workspace_root / ".venv" / ("Scripts" if os.name == "nt" else "bin") / "code-review-graph").with_suffix(".exe" if os.name == "nt" else "")))
+    content = content.replace("{{RTK_DIR}}", str(workspace_root / editor_dir / "rtk"))
+    content = content.replace("{{RTK_EXE}}", str(workspace_root / editor_dir / "rtk" / rtk_binary_name()))
+    content = content.replace("{{RTK_HOOK_SCRIPT}}", "rtk-hook-cursor.ps1" if os.name == "nt" else "rtk-hook-cursor.sh")
+    content = content.replace("{{SHELL_TYPE}}", shell_type)
+    content = content.replace("{{SHELL_EXT}}", shell_ext)
+    content = content.replace("{{SHELL_CHAIN_TIP}}", shell_chain_tip)
+    content = content.replace("{{SHELL_FALLBACK_NOTE}}", shell_fallback_note)
+    content = content.replace("{{SOURCE_RULE_EXT}}", source_rule_ext)
+    content = content.replace("{{EDITOR_RULE_EXT}}", editor_rule_ext)
+    content = content.replace("{{SKILLS_PATH_NOTE}}", skills_path_note)
 
     agents_path.write_text(content, encoding="utf-8")
     print(f"[architecture] wrote AGENTS.md at {agents_path}")
@@ -1014,6 +921,7 @@ def interactive_mode() -> dict:
     print("\n" + "="*60)
     print("Step 6: Advanced Options")
     print("="*60)
+    config["skills_dir"] = input_with_default("Default SKILLS directory name in repositories", "agent-skills")
     config["skip_pull"] = confirm("Skip pulling updates for existing repos?", False)
     config["skip_graph_build"] = confirm("Skip building code-review-graph?", False)
     config["force_agents"] = confirm("Overwrite architecture/AGENTS.md?", False)
@@ -1059,8 +967,6 @@ def main(argv: Optional[List[str]] = None) -> None:
         skills_dir = config["skills_dir"]
         skip_pull = config["skip_pull"]
         skip_graph_build = config["skip_graph_build"]
-        force_agents = config["force_agents"]
-        force = config["force"]
         
         # Parse repos from interactive config
         repos: List[RepoConfig] = []
@@ -1176,14 +1082,13 @@ Examples:
         skip_pull = args.skip_pull
         skip_graph_build = args.skip_graph_build
         force_agents = args.force_agents
-        force = args.force
     
     try:
         workspace_root.mkdir(parents=True, exist_ok=True)
 
         # Clone repositories
         for repo in repos:
-            clone_or_update_repo(repo, workspace_root, skip_pull=args.skip_pull)
+            clone_or_update_repo(repo, workspace_root, skip_pull=skip_pull)
 
         # Handle CRG and venv
         venv_dir: Optional[Path] = None
@@ -1191,7 +1096,7 @@ Examples:
             venv_dir = ensure_venv(workspace_root)
             build_code_workspace(workspace_root, repos, venv_dir=venv_dir)
             ensure_crg(venv_dir)
-            crg_register_and_build(venv_dir, repos, workspace_root, skip_graph_build=args.skip_graph_build)
+            crg_register_and_build(venv_dir, repos, workspace_root, skip_graph_build=skip_graph_build)
         else:
             print("[crg] skipped (disabled)")
 
@@ -1199,7 +1104,7 @@ Examples:
         sync_agent_skills_rules_to_editor(workspace_root, repos, editors)
 
         # Setup RTK
-        rtk_hook = setup_rtk(workspace_root, repos, enable_rtk=enable_rtk, force_rtk=args.force_rtk)
+        rtk_hook = setup_rtk(workspace_root, repos, enable_rtk=enable_rtk, force_rtk=force_rtk)
 
         # Write editor configurations
         if "cursor" in editors and enable_crg and venv_dir:
@@ -1211,7 +1116,7 @@ Examples:
             write_workspace_trae_assets(workspace_root, repos, venv_dir, rtk_hook_command=rtk_hook)
 
         # Write architecture documentation
-        write_architecture_agents(workspace_root, repos, force=args.force_agents, skills_dir=args.skills_dir)
+        write_architecture_agents(workspace_root, repos, force=force_agents, skills_dir=skills_dir)
 
         print("\n[bootstrap] ✅ Done! Workspace initialized successfully.")
         print(f"           Workspace file: {workspace_root / 'nebula-workspace.code-workspace'}")
