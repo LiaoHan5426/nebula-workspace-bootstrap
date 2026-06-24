@@ -1,6 +1,7 @@
 param()
 $ErrorActionPreference = "SilentlyContinue"
-$rtkPath = "$PSScriptRoot/rtk.exe"
+$scriptDir = Split-Path -Parent $PSCommandPath
+$rtkPath = Join-Path $scriptDir "rtk.exe"
 if (-not (Test-Path $rtkPath)) {
     $rtkPath = (Get-Command rtk -ErrorAction SilentlyContinue)?.Source
 }
