@@ -44,7 +44,7 @@ if ($LASTEXITCODE -ne 0) { throw "Unable to configure sparse workspace checkout.
 & git -C $WorkspaceRoot checkout
 if ($LASTEXITCODE -ne 0) { throw "Unable to materialize workspace files." }
 
-$toolRoot = Join-Path $WorkspaceRoot ".bootstrap"
+$toolRoot = Join-Path $env:LOCALAPPDATA "nebula-workspace-bootstrap"
 if (Test-Path -LiteralPath (Join-Path $toolRoot ".git\HEAD")) {
     & git -C $toolRoot pull --ff-only
 } else {

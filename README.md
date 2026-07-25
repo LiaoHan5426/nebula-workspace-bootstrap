@@ -5,8 +5,8 @@
 它负责版本管理跨仓库内容，并根据 `repos.manifest.json` 克隆或更新后端与前端仓库。前后端仍保留各自独立的 Git 历史。
 
 安装器使用 Git sparse-checkout，只把工作空间需要的文档、架构、manifest
-和命令入口放到目标根目录。bootstrap 实现保存在被忽略的 `.bootstrap/`
-工具缓存中，不会污染日常工作区视图或控制仓库提交。
+和命令入口放到目标根目录。bootstrap 实现保存在用户级缓存目录中
+（Windows 为 `%LOCALAPPDATA%\nebula-workspace-bootstrap`），不会进入工作空间。
 
 ## 工作空间结构
 
@@ -19,7 +19,6 @@ nebula-workspace/
 ├── bootstrap.py                  # Python 构建入口
 ├── workspace.ps1                 # Windows 统一命令
 ├── workspace.sh                  # Linux/macOS 统一命令
-├── .bootstrap/                   # 被忽略的 bootstrap 工具缓存
 ├── nebula/                       # 后端独立 Git 仓库（父仓库忽略）
 └── nebula-studio/                # 前端独立 Git 仓库（父仓库忽略）
 ```

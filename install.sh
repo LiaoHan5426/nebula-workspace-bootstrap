@@ -18,7 +18,8 @@ git -C "$workspace_root" sparse-checkout set --no-cone \
   .gitignore README.md architecture docs repos.manifest.json workspace.ps1 workspace.sh
 git -C "$workspace_root" checkout
 
-tool_root="$workspace_root/.bootstrap"
+cache_home="${XDG_CACHE_HOME:-$HOME/.cache}"
+tool_root="$cache_home/nebula-workspace-bootstrap"
 if [[ -f "$tool_root/.git/HEAD" ]]; then
   git -C "$tool_root" pull --ff-only
 else

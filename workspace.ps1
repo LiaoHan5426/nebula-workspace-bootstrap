@@ -12,7 +12,7 @@ $WorkspaceRoot = [System.IO.Path]::GetFullPath($WorkspaceRoot)
 $ToolRoot = if (Test-Path -LiteralPath (Join-Path $WorkspaceRoot "bootstrap.py")) {
     $WorkspaceRoot
 } else {
-    Join-Path $WorkspaceRoot ".bootstrap"
+    Join-Path $env:LOCALAPPDATA "nebula-workspace-bootstrap"
 }
 $Bootstrap = Join-Path $ToolRoot "bootstrap.py"
 
@@ -30,7 +30,7 @@ docs/architecture files before initializing Git.
 
 function Invoke-Bootstrap {
     if (-not (Test-Path -LiteralPath $Bootstrap)) {
-        throw "Bootstrap tool cache is missing at '$ToolRoot'. Run install.ps1 again to repair it."
+        throw "Bootstrap tool cache is missing at '$ToolRoot'. Run the remote installer again to repair it."
     }
     $arguments = @(
         $Bootstrap,

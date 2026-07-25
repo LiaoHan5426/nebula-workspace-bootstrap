@@ -5,7 +5,8 @@ command_name="${1:-init}"
 workspace_root="${2:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 tool_root="$workspace_root"
 if [[ ! -f "$tool_root/bootstrap.py" ]]; then
-  tool_root="$workspace_root/.bootstrap"
+  cache_home="${XDG_CACHE_HOME:-$HOME/.cache}"
+  tool_root="$cache_home/nebula-workspace-bootstrap"
 fi
 
 if [[ "$command_name" == "doctor" ]]; then
