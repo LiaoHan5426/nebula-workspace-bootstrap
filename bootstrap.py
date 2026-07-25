@@ -416,11 +416,11 @@ Examples:
             workspace_root, repos, force=args.force_agents
         )
 
-        print("\n[bootstrap] ✅ Done! Workspace initialized successfully.")
+        print("\n[bootstrap] Done! Workspace initialized successfully.")
         print(f"           Workspace file: {workspace_root / 'nebula-workspace.code-workspace'}")
 
     except Exception as e:
-        print(f"\n[bootstrap] ❌ Error occurred: {e}", file=sys.stderr)
+        print(f"\n[bootstrap] Error occurred: {e}", file=sys.stderr)
         import traceback
         traceback.print_exc()
         sys.exit(1)
