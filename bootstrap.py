@@ -16,6 +16,7 @@ from src import (
     crg_register_and_build,
     ensure_crg,
     ensure_venv,
+    ensure_workspace_gitignore,
     load_manifest,
     parse_repos,
     patch_claude_md_in_repos,
@@ -66,6 +67,7 @@ def parse_repo_spec(spec: str) -> RepoConfig:
     name = ""
     repo_dir = ""
     alias = ""
+    branch = None
     
     for part in parts:
         if "=" in part:
@@ -78,6 +80,8 @@ def parse_repo_spec(spec: str) -> RepoConfig:
                 repo_dir = value
             elif key == "alias":
                 alias = value
+            elif key == "branch":
+                branch = value
         elif not url:
             url = part
     
@@ -93,7 +97,14 @@ def parse_repo_spec(spec: str) -> RepoConfig:
     if not alias:
         alias = name
     
-    return RepoConfig(key=name, url=url, dir=repo_dir, workspace_name=name, crg_alias=alias)
+    return RepoConfig(
+        key=name,
+        url=url,
+        dir=repo_dir,
+        workspace_name=name,
+        crg_alias=alias,
+        branch=branch,
+    )
 
 
 def interactive_mode(manifest_path: Path) -> dict:
@@ -279,7 +290,7 @@ Examples:
       --repo name=backend,url=https://github.com/user/repo1.git,dir=backend,alias=backend \\
       --repo name=frontend,url=https://github.com/user/repo2.git,dir=frontend,alias=frontend
   
-  # Use manifest repos (legacy mode)
+  # Use every repository in repos.manifest.json
   python bootstrap.py --workspace-root /path/to/workspace --repos all
   
   # Only initialize for Trae editor
@@ -289,7 +300,11 @@ Examples:
         parser.add_argument("--interactive", "-i", action="store_true", help="Run in interactive mode")
         parser.add_argument("--workspace-root", required=True, help="Path to workspace root directory")
         parser.add_argument("--repo", action="append", help="Git repo URL or spec (name=xxx,url=xxx,dir=xxx,alias=xxx)")
-        parser.add_argument("--repos", default="", help="Legacy: Comma-separated list from manifest (use --repo instead)")
+        parser.add_argument(
+            "--repos",
+            default="",
+            help="Comma-separated repository keys from manifest; defaults to all manifest repositories",
+        )
         parser.add_argument("--editor", default="all", choices=["all", "cursor", "trae"],
                             help="Select the editor to initialize for: all (default), cursor, or trae")
         parser.add_argument("--skip-pull", action="store_true", help="Skip pulling updates for existing repos")
@@ -320,8 +335,9 @@ Examples:
             selected = [s.strip() for s in args.repos.split(",")] if args.repos else ["all"]
             repos = parse_repos(manifest, selected)
         else:
-            print("Error: Either --repo or --repos is required", file=sys.stderr)
-            sys.exit(1)
+            # Project default: a plain command rebuilds every repository declared
+            # by repos.manifest.json.
+            repos = parse_repos(manifest, ["all"])
     
     workspace_root = Path(args.workspace_root).resolve()
 
@@ -348,6 +364,8 @@ Examples:
     print(f"[bootstrap] force mode: {args.force}")
 
     try:
+        ensure_workspace_gitignore(workspace_root, repos)
+
         # Clone/update repos
         for repo in repos:
             clone_or_update_repo(repo, workspace_root, skip_pull=args.skip_pull)

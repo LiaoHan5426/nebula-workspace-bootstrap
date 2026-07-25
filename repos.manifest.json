@@ -1,7 +1,26 @@
 {
-  "$schema": "https://example.com/nebula-workspace-bootstrap/repos.manifest.schema.json",
   "defaultWorkspaceName": "nebula-workspace",
+  "repos": {
+    "nebula": {
+      "url": "https://github.com/LiaoHan5426/nebula.git",
+      "dir": "nebula",
+      "workspaceName": "nebula",
+      "crgAlias": "nebula",
+      "branch": "development"
+    },
+    "nebula-studio": {
+      "url": "https://github.com/LiaoHan5426/nebula-studio.git",
+      "dir": "nebula-studio",
+      "workspaceName": "nebula-studio",
+      "crgAlias": "nebula-studio",
+      "branch": "development"
+    }
+  },
   "extraFolders": [
+    {
+      "name": "docs",
+      "path": "docs"
+    },
     {
       "name": "architecture",
       "path": "architecture"

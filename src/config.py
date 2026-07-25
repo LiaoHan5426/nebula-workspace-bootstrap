@@ -13,6 +13,7 @@ class RepoConfig:
     dir: str
     workspace_name: str
     crg_alias: str
+    branch: Optional[str] = None
 
 
 @dataclass
@@ -53,6 +54,7 @@ def parse_repos(manifest: dict, selected: Optional[List[str]]) -> List[RepoConfi
                 dir=cfg["dir"],
                 workspace_name=cfg.get("workspaceName", key),
                 crg_alias=cfg.get("crgAlias", key),
+                branch=cfg.get("branch"),
             )
         )
     return result

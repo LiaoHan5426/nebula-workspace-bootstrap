@@ -159,6 +159,9 @@ def ensure_workspace_gitignore_rtk(workspace_root: Path, install_rel: str) -> No
     existing = ""
     if gitignore.is_file():
         existing = gitignore.read_text(encoding="utf-8")
+    ignored_parent = f"/{install_rel.split('/', 1)[0].strip('/')}/"
+    if ignored_parent in existing.splitlines():
+        return
     new_lines = [line for line in lines_to_add if line not in existing]
     if not new_lines:
         return

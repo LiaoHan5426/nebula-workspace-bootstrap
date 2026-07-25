@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .config import RepoConfig, RtkInstall, load_manifest, parse_repos
-from .git import clone_or_update_repo
+from .git import clone_or_update_repo, ensure_workspace_gitignore
 from .venv import ensure_venv, venv_python
 from .crg import ensure_crg, crg_executable, crg_register_and_build
 from .workspace import build_code_workspace
@@ -16,6 +16,7 @@ __all__ = [
     "load_manifest",
     "parse_repos",
     "clone_or_update_repo",
+    "ensure_workspace_gitignore",
     "ensure_venv",
     "venv_python",
     "ensure_crg",

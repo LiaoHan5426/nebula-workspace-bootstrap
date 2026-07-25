@@ -24,3 +24,15 @@ Thumbs.db
 
 # Cursor
 .cursor/
+
+# Nested repositories (managed through repos.manifest.json)
+/nebula/
+/nebula-studio/
+
+# Generated workspace state
+/.code-review-graph/
+/.rtk/
+/.hooks/
+/.trae/
+/.qoder/
+/*.code-workspace
