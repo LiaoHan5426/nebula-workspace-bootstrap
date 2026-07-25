@@ -17,20 +17,21 @@ def ensure_workspace_gitignore(workspace_root: Path, repos: list[RepoConfig]) ->
         *[f"/{repo_path}/" for repo_path in repo_paths],
         "",
         "# Generated workspace state",
-        "/.venv/",
+        ".venv/",
         "/.code-review-graph/",
         "/.rtk/",
         "/.hooks/",
-        "/.cursor/",
+        ".cursor/",
         "/.trae/",
         "/.qoder/",
         "/*.code-workspace",
     ]
-    missing = [line for line in required if line and line not in existing.splitlines()]
+    existing_lines = existing.splitlines()
+    missing = [line for line in required if line and line not in existing_lines]
     if not missing:
         return
     prefix = existing.rstrip()
-    section = "\n".join(required)
+    section = "\n".join(missing)
     gitignore.write_text(f"{prefix}\n\n{section}\n" if prefix else f"{section}\n", encoding="utf-8")
     print(f"[git] updated workspace ignore rules: {gitignore}")
 

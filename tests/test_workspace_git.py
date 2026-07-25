@@ -34,8 +34,31 @@ class WorkspaceManifestTests(unittest.TestCase):
 
         self.assertIn("/nebula/", first)
         self.assertIn("/nebula-studio/", first)
-        self.assertIn("/.venv/", first)
+        self.assertIn(".venv/", first)
         self.assertEqual(first, second)
+
+    def test_only_missing_ignore_rules_are_appended(self) -> None:
+        repos = parse_repos(load_manifest(ROOT / "repos.manifest.json"), ["all"])
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            gitignore = workspace / ".gitignore"
+            gitignore.write_text(
+                "# Nested repositories (managed through repos.manifest.json)\n"
+                "/nebula/\n"
+                "/nebula-studio/\n",
+                encoding="utf-8",
+            )
+
+            ensure_workspace_gitignore(workspace, repos)
+            text = gitignore.read_text(encoding="utf-8")
+
+        self.assertEqual(text.count("/nebula/"), 1)
+        self.assertEqual(text.count("/nebula-studio/"), 1)
+        self.assertEqual(
+            text.count("# Nested repositories (managed through repos.manifest.json)"),
+            1,
+        )
+        self.assertIn(".venv/", text)
 
 
 if __name__ == "__main__":
