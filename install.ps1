@@ -28,7 +28,10 @@ if (Test-Path -LiteralPath $gitHead) {
     }
 }
 
-$arguments = @("init", "-WorkspaceRoot", $WorkspaceRoot)
-if ($SkipGraphBuild) { $arguments += "-SkipGraphBuild" }
-if ($SkipRtk) { $arguments += "-SkipRtk" }
+$arguments = @{
+    Command = "init"
+    WorkspaceRoot = $WorkspaceRoot
+    SkipGraphBuild = $SkipGraphBuild
+    SkipRtk = $SkipRtk
+}
 & (Join-Path $WorkspaceRoot "workspace.ps1") @arguments
