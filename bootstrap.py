@@ -400,7 +400,7 @@ Examples:
         patch_claude_md_in_repos(
             workspace_root,
             repos,
-            rtk_cfg.get("initInRepos") or ["nebula-studio", "nebula"],
+            rtk_cfg.get("initInRepos", ["nebula-studio", "nebula"]),
         )
 
         # Write cursor/trae assets

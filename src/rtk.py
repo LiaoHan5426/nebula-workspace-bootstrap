@@ -262,7 +262,7 @@ def install_rtk_to_workspace(
     install_dir = (workspace_root / install_rel).resolve()
     install_dir.mkdir(parents=True, exist_ok=True)
     github_repo = rtk_cfg.get("githubRepo", "rtk-ai/rtk")
-    init_repos = rtk_cfg.get("initInRepos") or ["nebula-studio"]
+    init_repos = rtk_cfg.get("initInRepos", ["nebula-studio"])
 
     meta_path = install_dir / "install.json"
     target_asset = rtk_asset_name_for_platform()
