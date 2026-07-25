@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 from src.config import load_manifest, parse_repos
 from src.git import ensure_workspace_gitignore
-from src.rtk import rtk_asset_name_for_platform
+from src.rtk import extract_rtk_archive, rtk_asset_name_for_platform
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,6 +19,17 @@ class WorkspaceManifestTests(unittest.TestCase):
 
         self.assertTrue(asset.startswith("rtk-"))
         self.assertTrue(asset.endswith((".zip", ".tar.gz")))
+
+    def test_rtk_zip_archive_can_be_extracted(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            archive = root / "rtk.zip"
+            with zipfile.ZipFile(archive, "w") as output:
+                output.writestr("bin/rtk.exe", b"test-binary")
+
+            extracted = extract_rtk_archive(archive, root / "extract")
+
+            self.assertEqual(extracted.read_bytes(), b"test-binary")
 
     def test_default_repositories_and_branches(self) -> None:
         repos = parse_repos(load_manifest(ROOT / "repos.manifest.json"), ["all"])

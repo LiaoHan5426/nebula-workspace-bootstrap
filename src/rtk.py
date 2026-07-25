@@ -10,6 +10,7 @@ import tarfile
 import tempfile
 import urllib.error
 import urllib.request
+import zipfile
 from pathlib import Path
 from typing import List, Optional, Tuple
 
