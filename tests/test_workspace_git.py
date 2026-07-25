@@ -6,12 +6,19 @@ from pathlib import Path
 
 from src.config import load_manifest, parse_repos
 from src.git import ensure_workspace_gitignore
+from src.rtk import rtk_asset_name_for_platform
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class WorkspaceManifestTests(unittest.TestCase):
+    def test_rtk_asset_can_be_resolved_for_current_platform(self) -> None:
+        asset = rtk_asset_name_for_platform()
+
+        self.assertTrue(asset.startswith("rtk-"))
+        self.assertTrue(asset.endswith((".zip", ".tar.gz")))
+
     def test_default_repositories_and_branches(self) -> None:
         repos = parse_repos(load_manifest(ROOT / "repos.manifest.json"), ["all"])
 
