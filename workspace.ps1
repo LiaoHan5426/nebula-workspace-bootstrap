@@ -9,7 +9,12 @@ param(
 
 $ErrorActionPreference = "Stop"
 $WorkspaceRoot = [System.IO.Path]::GetFullPath($WorkspaceRoot)
-$Bootstrap = Join-Path $WorkspaceRoot "bootstrap.py"
+$ToolRoot = if (Test-Path -LiteralPath (Join-Path $WorkspaceRoot "bootstrap.py")) {
+    $WorkspaceRoot
+} else {
+    Join-Path $WorkspaceRoot ".bootstrap"
+}
+$Bootstrap = Join-Path $ToolRoot "bootstrap.py"
 
 function Assert-WorkspaceRepository {
     if (-not (Test-Path -LiteralPath (Join-Path $WorkspaceRoot ".git\HEAD"))) {
@@ -24,9 +29,13 @@ docs/architecture files before initializing Git.
 }
 
 function Invoke-Bootstrap {
+    if (-not (Test-Path -LiteralPath $Bootstrap)) {
+        throw "Bootstrap tool cache is missing at '$ToolRoot'. Run install.ps1 again to repair it."
+    }
     $arguments = @(
         $Bootstrap,
         "--workspace-root", $WorkspaceRoot,
+        "--manifest", (Join-Path $WorkspaceRoot "repos.manifest.json"),
         "--repos", "all",
         "--yes"
     )
@@ -53,5 +62,9 @@ Assert-WorkspaceRepository
 if ($Command -eq "update") {
     & git -C $WorkspaceRoot pull --ff-only
     if ($LASTEXITCODE -ne 0) { throw "Unable to update workspace repository." }
+    if ($ToolRoot -ne $WorkspaceRoot) {
+        & git -C $ToolRoot pull --ff-only
+        if ($LASTEXITCODE -ne 0) { throw "Unable to update bootstrap tool cache." }
+    }
 }
 Invoke-Bootstrap

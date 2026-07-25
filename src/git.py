@@ -24,6 +24,7 @@ def ensure_workspace_gitignore(workspace_root: Path, repos: list[RepoConfig]) ->
         ".cursor/",
         "/.trae/",
         "/.qoder/",
+        "/.bootstrap/",
         "/*.code-workspace",
     ]
     existing_lines = existing.splitlines()

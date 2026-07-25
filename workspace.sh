@@ -3,6 +3,10 @@ set -euo pipefail
 
 command_name="${1:-init}"
 workspace_root="${2:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+tool_root="$workspace_root"
+if [[ ! -f "$tool_root/bootstrap.py" ]]; then
+  tool_root="$workspace_root/.bootstrap"
+fi
 
 if [[ "$command_name" == "doctor" ]]; then
   echo "Workspace: $workspace_root"
@@ -21,12 +25,16 @@ fi
 
 if [[ "$command_name" == "update" ]]; then
   git -C "$workspace_root" pull --ff-only
+  if [[ "$tool_root" != "$workspace_root" ]]; then
+    git -C "$tool_root" pull --ff-only
+  fi
 elif [[ "$command_name" != "init" ]]; then
   echo "Usage: $0 [init|update|doctor] [workspace-root]" >&2
   exit 2
 fi
 
-python3 "$workspace_root/bootstrap.py" \
+python3 "$tool_root/bootstrap.py" \
   --workspace-root "$workspace_root" \
+  --manifest "$workspace_root/repos.manifest.json" \
   --repos all \
   --yes
