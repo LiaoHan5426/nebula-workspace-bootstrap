@@ -7,7 +7,11 @@ from pathlib import Path
 
 from src.config import load_manifest, parse_repos
 from src.git import ensure_workspace_gitignore
-from src.rtk import extract_rtk_archive, rtk_asset_name_for_platform
+from src.rtk import (
+    ensure_workspace_gitignore_rtk,
+    extract_rtk_archive,
+    rtk_asset_name_for_platform,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,6 +34,16 @@ class WorkspaceManifestTests(unittest.TestCase):
             extracted = extract_rtk_archive(archive, root / "extract")
 
             self.assertEqual(extracted.read_bytes(), b"test-binary")
+
+    def test_rtk_does_not_dirty_ignore_when_cursor_parent_is_ignored(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            gitignore = Path(temp_dir) / ".gitignore"
+            original = ".venv/\n.cursor/\n"
+            gitignore.write_text(original, encoding="utf-8")
+
+            ensure_workspace_gitignore_rtk(Path(temp_dir), ".cursor/rtk")
+
+            self.assertEqual(gitignore.read_text(encoding="utf-8"), original)
 
     def test_default_repositories_and_branches(self) -> None:
         repos = parse_repos(load_manifest(ROOT / "repos.manifest.json"), ["all"])
