@@ -29,13 +29,13 @@ if (Test-Path -LiteralPath $gitHead) {
 }
 
 $workspaceFiles = @(
-    ".gitignore",
-    "README.md",
-    "architecture",
-    "docs",
-    "repos.manifest.json",
-    "workspace.ps1",
-    "workspace.sh"
+    "/.gitignore",
+    "/README.md",
+    "/architecture/",
+    "/docs/",
+    "/repos.manifest.json",
+    "/workspace.ps1",
+    "/workspace.sh"
 )
 & git -C $WorkspaceRoot sparse-checkout init --no-cone
 if ($LASTEXITCODE -ne 0) { throw "Unable to initialize sparse workspace checkout." }

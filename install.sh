@@ -15,7 +15,7 @@ fi
 
 git -C "$workspace_root" sparse-checkout init --no-cone
 git -C "$workspace_root" sparse-checkout set --no-cone \
-  .gitignore README.md architecture docs repos.manifest.json workspace.ps1 workspace.sh
+  /.gitignore /README.md /architecture/ /docs/ /repos.manifest.json /workspace.ps1 /workspace.sh
 git -C "$workspace_root" checkout
 
 cache_home="${XDG_CACHE_HOME:-$HOME/.cache}"
