@@ -97,10 +97,10 @@ flowchart LR
 | 窗口配置集中化 | 基本完成 | `configs/windows.json` + JSON Schema + 生成脚本 | 保留并继续收口 |
 | App Shell 分层 | 已完成 | `core/app-shell` 与 `core/shell` 已拆分 | 不再迁移目录 |
 | 统一认证 | 已完成 | `auth-provider` 为 Session 单一写入入口 | 后续补跨应用一致性测试 |
-| 统一 Preload | 已完成主体 | `electron-preload/src/unified.ts` + capability 工厂 | 仍有能力映射双源 |
-| Web/Electron 配置复用 | 基本完成 | 两端均消费内部 Vite manifest/config | 继续删除手工入口映射 |
+| 统一 Preload | 已完成 | manifest capability map + `unified.ts` + capability 工厂 | 保持单源 |
+| Web/Electron 配置复用 | 已完成 | 两端均消费内部 Vite manifest/config | Embed 入口继续执行存在性校验 |
 | API Client | 已完成基础层 | `core/api-client` 已有鉴权、响应解析和测试 | 需全面消费生成契约 |
-| OpenAPI 生成 | 管道完成 | `contracts/generated/platform-api.ts` 已生成 | 业务代码采用率不足 |
+| OpenAPI 生成 | Phase 1 完成 | generated facade + Auth/Plugin 域迁移 | 继续迁移 Integration/System |
 | Integration 功能 | 功能较全但过载 | 插件、任务、服务治理、订阅、监控集中于单应用 | 需要按 feature 边界拆分 |
 | Features 共享包 | 未按旧计划落地 | 当前仅 `use-confirm` 为正式 feature 包 | 按真实复用需求提取 |
 | 编辑器边界 | 部分完成 | DAG/Flow 可用；`code-editor` 缺标准包入口 | 需要补齐导出和构建 |
@@ -147,23 +147,18 @@ flowchart LR
 
 ## 4. 当前主要问题
 
-### F1. 窗口配置仍不是完全单源（P0）
+### F1. 窗口配置单源（P0，已完成）
 
-`configs/windows.json` 已声明 `preloadCapabilities`，但
-`apps/electron-preload/src/config.ts` 仍维护一份 `PRELOAD_CONFIG`。新增窗口时仍可能出现
-窗口配置已生成、Preload 能力未同步的问题。
+2026-07-26 已完成：
 
-此外，生成脚本目前主要输出 `_generated-windows.ts`。Web Embed 入口文件仍以
-`apps/web/src/embed/*-entry.ts` 形式存在，需要人工创建。
+- manifest 从 `configs/windows.json` 聚合 `preloadCapabilities`；
+- 复用同一 preload ID 的窗口自动取能力并集；
+- 虚拟 Preload 入口在构建期注入能力，不再运行时查手写映射；
+- 删除 `apps/electron-preload/src/config.ts`；
+- manifest 构建继续校验每个 Web Embed、renderer `main.ts` 和 `boot.ts` 是否存在；
+- `check:generated` 对窗口生成结果执行幂等性检查。
 
-目标：
-
-- Preload 能力直接从生成 manifest 获取。
-- 删除手写 `PRELOAD_CONFIG`。
-- 生成或校验 Web Embed 入口。
-- `generate:configs` 后工作树必须无差异。
-
-### F2. 生成契约未成为业务唯一类型源（P0）
+### F2. 生成契约采用率不足（P0，Phase 1 已完成）
 
 `packages/contracts/generated/platform-api.ts` 已存在，但业务模块仍大量使用
 `contracts/auth`、`contracts/system`、`contracts/integration` 下的手写 DTO。
@@ -174,12 +169,12 @@ flowchart LR
 - 手写契约与 OpenAPI 同时演进。
 - 插件 descriptor、生命周期状态和仓库 DTO 容易继续漂移。
 
-目标：
+Phase 1 已完成 generated facade、Auth 和 Plugin API 类型迁移，并在 CI 中加入契约生成
+一致性检查。业务代码不再直接访问 `generated/platform-api.ts`。
 
-1. 建立 generated type facade，禁止页面直接访问原始 OpenAPI 路径类型。
-2. 按 Auth → Plugin → Integration → System 顺序迁移。
-3. CI 执行 `generate:contracts` 后检查工作树差异。
-4. 手写 DTO 仅保留 UI ViewModel，不重复服务端传输结构。
+当前 Platform OpenAPI 快照尚未包含 Auth 与 Camel Plugin schema，因此 facade 暂时组合
+OpenAPI 生成类型和基于后端 DTO 的兼容域契约。待对应服务输出完整 schema 后，只替换 facade
+内部来源，不改变业务导入路径。Integration 与 System 的剩余 DTO 迁移继续按增量方式进行。
 
 ### F3. Integration 子应用职责过载（P1）
 
@@ -314,22 +309,21 @@ apps → features → editors/ui → core/contracts
 
 ## 6. 分阶段实施计划
 
-### Phase 1：单源配置与契约硬化（P0，1 个迭代）
+### Phase 1：单源配置与契约硬化（P0，已完成）
 
-- [ ] 从生成 manifest 构建 Preload capability map。
-- [ ] 删除 `electron-preload/src/config.ts` 中的手写映射。
-- [ ] 增加生成文件一致性检查。
-- [ ] 建立 generated contracts facade。
-- [ ] 迁移 Auth 和 Plugin API 类型。
-- [ ] CI 增加配置、契约生成差异检查。
+- [x] 从生成 manifest 构建 Preload capability map。
+- [x] 删除 `electron-preload/src/config.ts` 中的手写映射。
+- [x] 增加生成文件一致性检查。
+- [x] 建立 generated contracts facade。
+- [x] 迁移 Auth 和 Plugin API 类型。
+- [x] CI 增加配置、契约生成差异检查。
 
 验收：
 
 ```powershell
-vp run generate:configs
-vp run generate:contracts
+vp run check:generated
 vp check
-git diff --exit-code
+vp run --filter @nebula-studio/electron build
 ```
 
 ### Phase 2：插件与 Integration 边界收敛（P1，1–2 个迭代）

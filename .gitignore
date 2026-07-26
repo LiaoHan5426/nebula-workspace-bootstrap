@@ -36,3 +36,4 @@ Thumbs.db
 /.trae/
 /.qoder/
 /*.code-workspace
+/.pnpm-store/
