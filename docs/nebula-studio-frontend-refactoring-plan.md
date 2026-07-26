@@ -618,19 +618,24 @@ Phase 4 API 接入后替换零值；MFA 与自助恢复已具备明确状态、�
 
 ### Phase 5：管理面与 Settings 现代化（P1，2–3 个迭代）
 
+2026-07-26 已完成 Phase 5 的角色信息架构、插件 Schema 单源链路和 Settings 核心页面现代化。
+Integration 已建立 `/provider/*`、`/manage/*` 与角色工作台，Settings 已拆分个人、组织和平台设置，
+并按角色隐藏导航与路由。后台存量列表的批量选择/统一抽屉仍作为本阶段最后一个横向收口项保留，
+避免在后端尚无批量事务契约时用前端串行请求伪装原子批处理。
+
 #### Phase 5A：Integration Provider/Admin
 
-- [ ] 新建 `features/plugin-catalog`。
-- [ ] 统一平台 descriptor 与 Camel descriptor 的前端 ViewModel。
-- [ ] Connector 配置表单消费 `configSchema`。
-- [ ] DAG 节点消费 `nodeSchema`，删除重复静态映射。
-- [ ] 提取 `subscription-manager`。
-- [ ] 为 feature 增加 API/mapping/composable 单元测试。
-- [ ] 将提供方任务迁移到 `/provider/*`，将平台治理任务迁移到 `/manage/*`。
-- [ ] 后台首页改为待办、异常和关键指标摘要，不以功能菜单作为首页。
+- [x] 新建 `features/plugin-catalog`。
+- [x] 统一平台 descriptor 与 Camel descriptor 的前端 ViewModel。
+- [x] Connector 配置表单消费 `configSchema`。
+- [x] DAG 节点消费 `nodeSchema`，删除重复静态映射。
+- [x] 提取 `subscription-manager`。
+- [x] 为 feature 增加 API/mapping/composable 单元测试。
+- [x] 将提供方任务迁移到 `/provider/*`，将平台治理任务迁移到 `/manage/*`。
+- [x] 后台首页改为待办、异常和关键指标摘要，不以功能菜单作为首页。
 - [ ] 统一后台列表的筛选区、列密度、批量操作、详情抽屉和危险操作确认模式。
-- [ ] 只在需要跨记录比较或批量处理时保留表格；单对象操作进入详情页或抽屉。
-- [ ] 按角色隐藏不可执行入口，而不是进入页面后再显示无权限状态。
+- [x] 只在需要跨记录比较或批量处理时保留表格；单对象操作进入详情页或抽屉。
+- [x] 按角色隐藏不可执行入口，而不是进入页面后再显示无权限状态。
 
 验收：
 
@@ -642,14 +647,14 @@ Phase 4 API 接入后替换零值；MFA 与自助恢复已具备明确状态、�
 
 #### Phase 5B：Settings
 
-- [ ] 将个人设置从系统管理导航拆出，所有登录用户可访问资料、会话、外观和语言。
-- [ ] 按“组织与成员、访问控制、应用与运行”重组组织/平台管理导航。
+- [x] 将个人设置从系统管理导航拆出，所有登录用户可访问资料、会话、外观和语言。
+- [x] 按“组织与成员、访问控制、应用与运行”重组组织/平台管理导航。
 - [ ] 用统一 `EntityListPage`、筛选栏、批量操作和详情抽屉改造用户、角色、权限和应用页面。
-- [ ] 删除 Settings 内自建 modal/confirm 样式，使用 `NebulaDialog`、`use-confirm` 和表单模式。
-- [ ] 权限管理提供树/矩阵两种视图，并显示角色继承、冲突和实际权限来源。
-- [ ] 配置管理消费 schema，展示默认值、继承层级、敏感性、影响范围和变更预览。
-- [ ] 审计日志提供结构化筛选、详情抽屉、关联实体跳转和导出。
-- [ ] 统一中文文案；专业缩写保留英文并提供解释。
+- [x] 删除 Settings 内自建 modal/confirm 样式，使用 `NebulaDialog`、`use-confirm` 和表单模式。
+- [x] 权限管理提供树/矩阵两种视图，并显示角色继承、冲突和实际权限来源。
+- [x] 配置管理消费 schema，展示默认值、继承层级、敏感性、影响范围和变更预览。
+- [x] 审计日志提供结构化筛选、详情抽屉、关联实体跳转和导出。
+- [x] 统一中文文案；专业缩写保留英文并提供解释。
 
 验收：
 
