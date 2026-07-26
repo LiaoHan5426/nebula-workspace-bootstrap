@@ -104,14 +104,14 @@ flowchart LR
 | OpenAPI 生成 | Phase 1 完成 | generated facade + Auth/Plugin 域迁移 | 继续迁移 Integration/System |
 | Integration 功能 | 功能较全但过载 | 插件、任务、服务治理、订阅、监控集中于单应用 | 需要按 feature 边界拆分 |
 | Features 共享包 | 未按旧计划落地 | 当前仅 `use-confirm` 为正式 feature 包 | 按真实复用需求提取 |
-| 编辑器边界 | 部分完成 | DAG/Flow 可用；`code-editor` 缺标准包入口 | 需要补齐导出和构建 |
+| 编辑器边界 | 已完成 | `code-editor` 已具备异步 Provider、导出、单测和 Bundle Budget；编辑器依赖已移出基础 UI | 保持 Provider 并列和单向依赖 |
 | 插件前端 | 基本可用 | 插件分类、市场、Connector、DAG Node Schema 已接入 | 需适配新版 descriptor 契约 |
-| Shell 体验 | 应用容器形态为主 | 侧栏、标签页、iframe 和应用坞可用，工作台为空状态 | 增加个人首页、全局搜索、任务和最近访问 |
-| Integration 体验 | 管理后台形态为主 | 已有门户/管理切换，但门户仅 2 个入口；31 个功能页中 16 个以表格为核心 | 建立资源门户与治理后台双界面模型 |
-| Settings 体验 | 系统管理列表 | 8 个管理入口平铺；个人外观与系统治理混排 | 拆分个人偏好、组织安全和系统管理 |
-| Login 体验 | 视觉基础较完整 | 支持账号与组织两步登录，但状态、帮助和多端一致性不足 | 建立完整认证与恢复体验 |
-| Docs 体验 | 组件示例站 | 3 篇指南，主要内容是 20+ UI 组件示例 | 同时承担产品帮助与开发者参考 |
-| E2E | 冒烟级 | 3 个 spec；关键流大量使用路由 Mock | 缺真实后端联调关口 |
+| Shell 体验 | Phase 3 完成 | 个人工作台、全局搜索、最近访问、任务入口和分类恢复状态已落地 | 接入更多真实摘要数据 |
+| Integration 体验 | Phase 4 完成 | 资源门户与管理中心分层，具备目录、详情、申请、进度和我的资源 | 扩展真实资源类型与后端数据 |
+| Settings 体验 | Phase 5 完成主体 | 已拆分个人、组织、平台入口并完成权限矩阵、配置与审计现代化 | 继续统一剩余实体列表页 |
+| Login 体验 | Phase 3 完成前端状态 | AuthFlow 已覆盖账号、组织、MFA、恢复和分类错误 | 等待后端 MFA/恢复契约 |
+| Docs 体验 | Phase 6 完成 | 产品帮助、开发者参考、全文搜索、help key 和首次任务引导已落地 | 随功能持续维护内容 |
+| E2E | 关口已建立 | 4 个 Playwright project、24 项测试；Mock/体验/Electron 本地通过 | 修复后端 Bean 装配后通过 real-stack |
 
 ---
 
@@ -228,30 +228,34 @@ Integration 内部耦合，再依据团队边界决定是否拆应用。
 - 用 `nodeSchema` 驱动 DAG Node Palette 和属性面板。
 - 区分插件安装状态、PF4J 运行状态和业务审批状态。
 
-### F5. Code Editor 仍不是完整工作区包（P1）
+### F5. Code Editor 工作区边界（P1，已完成）
 
-`packages/editors/code-editor` 当前只有 Monaco Vue 文件和 README/tsconfig，缺少标准
-`package.json`、公共 `index.ts`、类型导出及独立测试。
+`packages/editors/code-editor` 已具备标准 `package.json`、公共入口、类型导出、
+异步 Monaco Provider、独立测试和 Bundle Budget。编辑器依赖已经移出
+`nebula-ui`。
 
-目标：
+已确定的长期模式：
 
-- 补齐 workspace package 契约。
-- 从 `nebula-ui` 移出编辑器依赖。
-- 明确 Monaco 与 CodeMirror 的使用边界。
-- 编辑器包之间禁止相互依赖。
+- 基础 UI 仅提供通用 primitive，不承载编辑器实现。
+- code-editor 暴露 provider-neutral 外壳，Monaco/CodeMirror 作为并列异步 Provider。
+- TipTap 属于独立富文本模型，不并入代码编辑器主入口。
+- 编辑器包之间以及编辑器到业务 feature 保持单向依赖。
 
-### F6. E2E 仍以 Mock 和页面可达性为主（P0）
+### F6. E2E 真实栈关口（P0，基础设施已完成）
 
-现有 `critical-flow.spec.ts` 覆盖 Auth、Console、Executor、Gateway、SSE 和 Logout，
-但请求由 Playwright route mock 返回；`studio-flow`、`g5-smoke` 主要验证页面可达。
+Mock 快速回归仍保留；同时已新增无网络 Mock 的 `real-stack` project、后端 reactor
+构建与三服务启动脚本、在线契约差异检查、分域日志以及 CI 手动/定时关口。
+体验 project 覆盖六类界面视觉、窄屏、亮暗主题、键盘焦点和性能预算，Electron
+project 覆盖启动、认证恢复、Preload capability 和窗口切换。
 
-真实验收至少需要：
+当前真实验收状态：
 
-1. 启动 `platform-console :8090`。
-2. 启动 Camel Console/Executor `:8080/:8081`。
-3. 启动 Web Shell。
-4. 执行登录 → 租户 → 插件 → 订阅/SSE → Gateway → Monitor。
-5. 保存失败时的 trace、截图和后端日志。
+1. 后端 reactor 构建成功，PostgreSQL 可连接。
+2. `platform-console :8090` 在创建 `ConfigRestController` 时因缺少
+   `ConfigService` Bean 退出。
+3. 脚本已能检测进程提前退出，并将日志写入 `test-results/real-stack`。
+4. 修复后端装配后，重新运行 `vp run test:e2e:real`，继续验证登录 → 插件 →
+   订阅/SSE → Gateway → Monitor 和在线契约。
 
 ### F7. 文档与命名漂移（P2，已完成）
 
@@ -800,24 +804,24 @@ install
 
 | 指标 | 当前基线 | 目标 |
 | --- | --- | --- |
-| 窗口能力配置源 | JSON + Preload 手写映射 | 仅 `windows.json` |
+| 窗口能力配置源 | 仅 `windows.json`，生成 Preload capability | 保持单源与幂等检查 |
 | PF4J/Camel 插件身份解析 | 页面可能按单 descriptor 假设 | 使用组合 ViewModel |
 | 生成契约业务采用率 | 较低 | 新增 API 100%，存量分批迁移 |
 | 正式 feature 包 | 1 个 | 首批 3–4 个真实复用包 |
 | Integration 职责 | 页面、API、mapper、feature 混合 | 页面组合与 feature 分离 |
-| Shell 默认首页 | 空状态或应用坞 | 最近访问、待办、申请、异常和快捷动作 |
-| 跨应用查找 | 依赖进入各子应用 | 全局搜索应用、资源、文档和动作 |
-| Portal 主旅程 | 订阅管理与“我的服务”两个孤立入口 | 发现、详情、申请、进度、使用完整闭环 |
-| Portal/Admin 边界 | 共用管理导航和页面模式 | 独立信息架构，共享设计语言 |
-| 资源页面表达 | 表格优先 | 目录卡片/列表 + 详情；表格用于批量管理 |
-| Settings 信息架构 | 个人偏好与系统治理同级 | 个人、组织、平台三级设置 |
-| Login 状态覆盖 | 账号 + 组织选择 | 登录、组织、MFA、恢复及分类错误状态 |
-| Docs 内容 | 组件示例为主 | 产品帮助 + 开发者参考 + 上下文帮助 |
-| 可访问性 | 无统一关口 | 核心旅程 WCAG 2.2 AA、完整键盘操作 |
-| 视觉回归 | 无稳定基线 | 六类界面 × 亮暗主题 × 关键宽度 |
-| Code Editor | 非完整 workspace 包 | 可独立构建、测试、发布 |
-| Playwright | 3 个冒烟 spec，主要 Mock | Mock 回归 + 真实全链路 |
-| Preload 实现 | 已统一，配置仍有双源 | 实现和配置均单源 |
+| Shell 默认首页 | 已有最近访问、待办、申请、异常和快捷动作 | 接入更多真实摘要 provider |
+| 跨应用查找 | 已支持应用、资源、文档和动作 | 扩展真实后端搜索结果 |
+| Portal 主旅程 | 已有发现、详情、申请、进度和我的资源闭环 | 扩展资源类型与真实审批数据 |
+| Portal/Admin 边界 | 已使用独立信息架构与共享设计语言 | 保持业务模式分层 |
+| 资源页面表达 | 目录卡片/列表 + 详情；管理面保留表格 | 持续验证真实数据密度 |
+| Settings 信息架构 | 已拆分个人、组织、平台三级入口 | 统一剩余实体列表页 |
+| Login 状态覆盖 | 前端覆盖登录、组织、MFA、恢复及分类错误 | 接入后端 MFA/恢复契约 |
+| Docs 内容 | 产品帮助 + 开发者参考 + 上下文帮助 | 随版本持续维护 |
+| 可访问性 | 已有键盘焦点、溢出和关键旅程自动断言 | 扩展 WCAG 2.2 AA 自动扫描 |
+| 视觉回归 | 六类界面 × 亮暗主题 × 4 个宽度，共 48 张基线 | 保持稳定并审查有意变更 |
+| Code Editor | 可独立构建、测试，使用异步 Provider | 保持 Provider 与业务解耦 |
+| Playwright | 4 个 project、24 项测试；真实栈因后端 Bean 缺失未通过 | Mock/体验/Electron 稳定回归 + 真实全链路通过 |
+| Preload 实现 | 实现和 capability 配置均单源 | 保持生成校验 |
 
 ---
 
@@ -854,15 +858,16 @@ install
 6. [x] 以 API/库表/Connector 为首批资源，交付 `/catalog` 目录和统一详情页。
 7. [x] 接入申请向导、状态时间线和“我的资源”，完成资源消费闭环。
 8. [ ] 完成 F4：插件组合 ViewModel、Schema 驱动 UI，并迁移到 Provider/Admin 界面。
-9. [ ] 重组 Settings 个人/组织/平台导航并迁移首批用户、角色、权限页面。
-10. [ ] 建立 Docs 产品帮助分区、全文搜索和跨应用 help key。
+9. [x] 重组 Settings 个人/组织/平台导航并迁移首批用户、角色、权限页面。
+10. [x] 建立 Docs 产品帮助分区、全文搜索和跨应用 help key。
 11. [ ] 提取 `personal-workspace`、`global-search`、`plugin-catalog`、`access-request`、
    `resource-catalog` 和
    `subscription-manager`。
-12. [ ] 补齐 `code-editor` 包。
-13. [ ] 建立真实后端、视觉回归和可访问性 Playwright 关口。
+12. [x] 补齐 `code-editor` 包。
+13. [x] 建立真实后端、视觉回归和可访问性 Playwright 关口；真实栈最终通过仍依赖
+    后端修复 `ConfigService` Bean 装配。
 
-执行中优先交付纵向切片，不按“先做完全部组件、再改全部页面”的方式推进。首个切片应完整
-贯通“登录 → 个人工作台 → 搜索 API 资源 → 查看详情 → 提交申请 → 查看审批状态 → 获得接入
-信息 → 打开对应帮助”，并同时覆盖 Web 和 Electron。该切片验证通过后，再扩展库表、
-Connector、Flow 和插件资源类型，同时并行迁移 Settings 管理页面。
+纵向切片“登录 → 个人工作台 → 搜索 API 资源 → 查看详情 → 提交申请 → 查看审批状态 →
+获得接入信息 → 打开对应帮助”已经具备 Mock、视觉和 Electron 验收基础。下一步先修复
+后端 `ConfigService` 装配并让该切片通过 real-stack，再扩展库表、Connector、Flow 和
+插件资源类型；不要以新增组件数量替代真实旅程验收。

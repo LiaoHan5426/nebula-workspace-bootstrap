@@ -12,9 +12,14 @@
 
 ### 1.1 背景结论
 
-经文档与 `nebula/nebula-config` 代码核实，当前实现不能承担完整配置中心职责。它已有 `ConfigService`、内存/JDBC 仓库、`nebula_config` 表、变更事件和 CORS/CSP 运行时策略，但缺少 Spring 启动期配置导入、远端配置中心 provider、监听刷新、快照缓存、优先级合并和失败策略。
+专项启动时，`nebula-config` 只有 `ConfigService`、内存/JDBC 仓库、
+`nebula_config` 表、变更事件和 CORS/CSP 运行时策略，不能承担完整配置中心职责。
+2026-07-25 已按本章 P1–P4 补齐启动期导入、center provider、监听/轮询刷新、
+快照、优先级合并、失败策略和治理文档。
 
-因此后续目标不是简单增强 CRUD，而是把 `nebula-config` 重构为“统一配置加载与刷新框架”，并支持两种部署模式。
+当前剩余问题不是配置中心能力缺失，而是应用组合验证不足：2026-07-26 的真实栈验收显示
+`platform-console` 未能获得 `ConfigService` Bean。第 5.3–5.4 节将该 AutoConfiguration/
+Starter 装配问题列为 P0 复验项。
 
 ### 1.2 目标模式
 
@@ -583,3 +588,63 @@ P4 不阻塞 TOTP 和密码恢复上线。
 
 回滚只能关闭“强制策略”和新入口，不得回滚或导出已生成 secret。已启用 MFA 的用户在兼容窗口内仍按
 高认证强度处理；数据库 migration 采用向前兼容方式保留，恢复 token 和认证事务可安全失效。
+
+---
+
+## 5. 前端 Phase 8 与真实栈验收收口
+
+### 5.1 已完成能力（2026-07-26）
+
+- Playwright 已拆分为 `mock-regression`、`experience`、`real-stack` 和
+  `electron` 四个 project，共枚举 24 项测试。
+- Mock 12 项、体验/性能 10 项和 Electron 1 项已在本地通过；Shell 核心包
+  13 项单测、前端 lint、PowerShell 脚本语法和生成契约无漂移检查通过。
+- Shell/Login/Portal/Admin/Settings/Docs 已建立亮暗主题和
+  320/768/1280/1440 px 共 48 张 Windows 视觉基线；键盘焦点和横向溢出进入自动断言。
+- Web 资源目录/详情和 Electron 目录已建立首屏性能预算，并把测量结果写入
+  Playwright JSON attachment。
+- Electron 覆盖应用启动、认证会话恢复、Preload capability、Shell 窗口切换和
+  Portal 亮暗主题截图。
+- CI 分离 Mock、Windows 体验、Windows Electron 和手动/定时 real-stack 作业；
+  失败时上传 Playwright trace、截图、录像与三项后端服务日志。
+
+### 5.2 真实栈脚本行为
+
+`nebula-studio/scripts/e2e/run-real-stack.ps1`：
+
+1. 从相邻 `nebula` 仓库或显式 `-BackendRoot` 定位后端；
+2. 通过 Maven reactor 安装 Platform Console、Camel Console、Executor 及其依赖；
+3. 启动 `:8090/:8080/:8081`，逐服务健康检查，并在进程提前退出时立即失败；
+4. 执行窗口配置生成、在线 OpenAPI 契约生成和 `git diff --exit-code`；
+5. 运行无网络 Mock 的 `real-stack` Playwright project；
+6. 只清理脚本自己启动的进程树，保留分类诊断日志。
+
+### 5.3 当前后端阻塞
+
+2026-07-26 已实际执行真实栈。PostgreSQL
+`localhost:54321/postgres?currentSchema=nebula_studio` 可连接，目标 reactor
+构建成功；`platform-console` 随后在 Spring 上下文初始化阶段失败：
+
+```text
+ConfigRestController
+  -> required ConfigService
+  -> no qualifying ConfigService bean
+```
+
+这说明 `config-core` 中已有接口/实现并不等于 Platform Console 已正确消费
+`config-autoconfigure` 的默认装配。真实栈在该阶段停止是正确关口行为，不能通过
+跳过 Platform Console 或退回 Mock 规避。
+
+### 5.4 后端修复与复验清单（P0）
+
+- [ ] 为 `platform-console` 增加 ApplicationContext 冒烟测试，断言
+  `ConfigService`、配置仓库和 `ConfigRestController` 可同时创建。
+- [ ] 检查 `config-starter` 依赖、AutoConfiguration imports、
+  `@ConditionalOnMissingBean` 条件和 mode/profile 属性，确保
+  `DefaultConfigService` 在 Platform Console 默认配置下装配。
+- [ ] 为 demo-camel-console 和 demo-camel-executor 增加同类上下文测试，
+  防止 `ClusterNodeReadMapper`、`ReleaseService` 等依赖再次因模块组合漂移而缺失。
+- [ ] 三项服务健康检查通过后运行 `vp run test:e2e:real`。
+- [ ] 确认在线契约生成无未提交差异，并完成登录、工作台、搜索、插件、订阅、
+  Settings 权限、帮助、Gateway 和 Monitor 真实断言。
+- [ ] 将真实栈 CI 从“能准确失败”提升为连续稳定通过后，才关闭 Phase 8 最终验收项。

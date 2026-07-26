@@ -1,12 +1,15 @@
 # Nebula 全栈实现分析与优化规划
 
-> 分析日期：2026-07-10（基于当前代码仓库 spot-check 重写；2026-07-24 补充 `nebula-config` 配置中心专项核实）
+> 分析日期：2026-07-10（基于当前代码仓库 spot-check 重写；2026-07-24 补充
+> `nebula-config` 配置中心专项核实；2026-07-26 同步前端 Phase 1–8 与真实栈验收结果）
 >
 > 范围：nebula（后端 Java/Spring Boot 平台） + nebula-studio（前端 Vue3/Monorepo）
 >
 > 前置文档：[模块规划.md](./模块规划.md)、[development-status.md](../nebula/docs/development-status.md)、[implementation-backlog.md](../nebula/docs/implementation-backlog.md)、[development-plan.md](../nebula/docs/development-plan.md)、[详细开发规划](./nebula-development-detailed-plan.md)
 >
-> **说明**：`development-status.md` / `implementation-backlog.md`（更新至 2026-06-30）已滞后于代码；本文以 2026-07-10 代码实勘为准。旧版分析中多处「已完成」偏乐观，本文已下调。
+> **说明**：后端主体判断仍以 2026-07-10 代码实勘和 2026-07-24 配置中心专项为准；
+> 前端状态已按 2026-07-26 Phase 1–8 实现与实测结果回写。旧版
+> `development-status.md` / `implementation-backlog.md` 的部分结论仍可能滞后。
 
 ---
 
@@ -45,17 +48,21 @@
 | 应用入口   | apps/web, apps/electron            | 2    | 可用     | Web shell + Electron 双入口                                                                            |
 | 子应用     | apps/sub-web/\*                    | 5    | 可用     | integration / settings / login / docs / frontend；多数有 README                                        |
 | 核心包     | packages/core/\*                   | 10   | 可用     | api-client、app-shell、auth、runtime、shell、sse-events、tenant 均有实现                               |
-| UI包       | packages/ui/\*                     | 3    | 可用     | nebula-ui（全量组件，仍含编辑器依赖）、nebula-layout、nebula-agent                                     |
-| 编辑包     | packages/editors/\*                | 5    | 参差     | dag/flow/integration-panel/low-code-form 可用；code-editor 导出仍为 stub                               |
-| 功能包     | packages/features/\*               | 5    | 多数骨架 | use-confirm 可用；plugin-installer 薄封装；route-designer / subscription-manager / version-diff 仅占位 |
+| UI包       | packages/ui/\*                     | 3    | 可用     | nebula-ui、nebula-layout、nebula-agent；编辑器实现与重依赖已移出基础 UI                                  |
+| 编辑包     | packages/editors/\*                | 5    | 可用     | code-editor 已补齐异步 Monaco Provider、导出、单测和 Bundle Budget；基础 UI 不再承载编辑器依赖          |
+| 功能包     | packages/features/\*               | 1    | 可用     | 当前仅保留真实复用的 use-confirm；其余候选能力继续按复用证据提取                                        |
 | 基础设施   | internal/\*、tools/\*              | ~5   | 可用     | `defineNebulaConfig` + `standardApiProxy` 已收敛                                                       |
-| 类型与契约 | packages/contracts、packages/types | 2    | 管道就绪 | `generate:contracts` + 离线 openapi.json 已有；**业务代码仍用手写 DTO**                                |
+| 类型与契约 | packages/contracts、packages/types | 2    | 增量采用 | `generate:contracts` + 离线 openapi.json 已有；Auth/Plugin 经 facade 采用，Integration/System 待迁移     |
 
 **前端结论：**
 
 - Monorepo 结构成熟（Vite+ / pnpm / Vue3 / TypeScript / Tailwind4）
 - Shell 嵌入子应用架构清晰：`app-shell`（SDK）与 `shell`（UI 容器）职责已拆分
-- **核心不足**：生成契约未被消费、features 包多为骨架、E2E 仅冒烟、nebula-ui 编辑器依赖未拆出
+- Phase 1–8 已完成配置/契约硬化、全局体验基线、Shell/Auth、资源门户、Settings、
+  Docs、编辑器治理和四类 Playwright 验收基础设施
+- **剩余核心不足**：生成契约仍需扩大业务采用率，正式 feature 提取仍有限；
+  real-stack 已能构建、启动、留存分域日志和校验契约，但最终通过被后端
+  `platform-console` 的 `ConfigService` Bean 装配缺口阻塞
 
 ---
 
@@ -272,7 +279,8 @@
 
 **现状**：`internal/vite` 提供 `defineNebulaConfig` + `standardApiProxy`；各子应用 `vite.config.ts` 已是薄包装（约 20–30 行）。
 
-**仍缺**：薄配置仍复制粘贴；integration 保留自定义 SSE proxy（合理）；docs 无 README。
+**仍缺**：薄配置仍有少量重复；integration 保留自定义 SSE proxy（合理）。
+Docs README 与 Monorepo 应用索引已在前端 Phase 6 补齐。
 
 **优化方向**：可选 `createSubWebViteConfig({ root, proxy })` 进一步去重。
 
@@ -296,9 +304,10 @@
 
 **现状**：`shellEventBus`（tenant:changed / auth:logout / theme:changed）；`bootMicroApp` 统一注入。
 
-**仍缺**：settings / login / docs 未像 integration 一样完整 `wireShellEventBus`。
+**现状更新**：统一 Session、主题、租户与 Shell Host Bridge 已覆盖主要子应用；
+仍需在真实栈恢复后验证组织切换对各业务数据源的失效与刷新行为。
 
-**优化方向**：settings 订阅租户/登出事件并刷新数据。
+**优化方向**：为组织切换、登出和主题变化补齐跨子应用真实数据失效测试。
 
 ---
 
@@ -312,23 +321,38 @@
 
 **现状**：多数子应用有 README + 可独立 `vp`/`filter` 启动；MSW handlers 覆盖 auth/settings/integration。
 
-**仍缺**：docs 缺 README；settings 未接 shell 事件；独立测试夹具不完整。
+**现状更新**：Docs README、统一微应用启动和主要 Shell 事件接入已完成；
+剩余缺口是各子应用独立运行时的真实后端夹具与一致性回归。
 
 ---
 
-### F-6. 编辑包边界过大（P2）[仍开放]
+### F-6. 编辑包边界过大（P2）[已完成]
 
-**现状**：nebula-ui 仍依赖 CodeMirror + TipTap；`packages/editors/code-editor` 公共导出仍为 stub，未真正承接拆分。
+**现状**：已采用“基础 UI → provider-neutral 编辑器外壳 → 异步 Provider → 业务应用”
+的单向依赖模式。`code-editor` 已补齐标准包入口、类型、测试和 Bundle Budget；
+Monaco 为默认异步 Provider，TipTap 进入独立富文本边界，`nebula-ui` 不再承担编辑器实现。
 
-**优化方向**：编辑器组件迁出 nebula-ui；修好 code-editor 打包与导出。
+**后续治理**：新增 Provider 时保持并列适配，禁止编辑器包反向依赖 UI 或业务 feature。
 
 ---
 
-### F-7. E2E 覆盖不足（P2）[冒烟级]
+### F-7. E2E 覆盖不足（P2）[基础设施已完成 / 真实栈阻塞]
 
-**现状**：Playwright 有 `g4-smoke` / `g5-smoke` / `theme-switch`；G5 可触达治理相关路由。
+**现状**：
 
-**仍缺**：G4 多为 TODO；无登录→租户→订阅 SSE→Gateway 完整路径；无 CI 跑 Playwright。
+- Playwright 已拆分为 `mock-regression`、`experience`、`real-stack`、`electron`
+  四个 project，共枚举 24 项测试；
+- 本地 Mock 12 项、体验/性能 10 项、Electron 1 项通过；
+- Shell/Login/Portal/Admin/Settings/Docs 已有亮暗主题和
+  320/768/1280/1440 px 共 48 张 Windows 视觉基线；
+- CI 已分组运行 Mock、Windows 视觉/性能、Windows Electron，并在手动或定时任务中运行真实栈；
+- real-stack 会构建后端 reactor，拉起 Platform Console、Camel Console、Executor 和 Web，
+  保存分域日志，在线生成契约并执行差异检查。
+
+**仍缺**：真实栈最终验收尚未通过。2026-07-26 实跑时数据库可连接、后端 reactor
+构建成功，但 `platform-console` 创建 `ConfigRestController` 时找不到
+`ConfigService` Bean。修复该后端装配问题后，需继续完成真实登录、插件、订阅、
+Gateway、Monitor 和契约漂移验收。
 
 ---
 
@@ -338,9 +362,12 @@
 
 ---
 
-### F-9. features 包多为骨架（P2）[新增跟踪]
+### F-9. features 包治理（P2）[已收口骨架]
 
-`route-designer` / `subscription-manager` / `version-diff` 仅模块常量 + TODO；`plugin-installer` 为薄 fetch 封装。应实现或删除，避免假模块。
+未形成真实复用的 `route-designer`、`subscription-manager`、`version-diff` 和
+`plugin-installer` 骨架已不再作为正式 feature 包保留；当前
+`packages/features` 仅保留有实际消费者的 `use-confirm`。后续只在存在两个以上消费者、
+稳定 API 边界和独立测试价值时提取 feature，避免为目录目标制造空包。
 
 ---
 
@@ -352,11 +379,15 @@
 
 ---
 
-### S-2. 验收测试不对称（P1）
+### S-2. 验收测试不对称（P1）[关口已建立 / 后端待恢复]
 
-缺从前端 Playwright 到 platform-console + executor 的端到端验收；无 Resource→Deploy→Runtime 硬验收。
+前端到 platform-console + Camel Console + Executor 的 real-stack 编排、健康检查、
+日志和 Playwright project 已建立。当前关口能在后端启动阶段准确失败，已暴露
+`platform-console` 缺少 `ConfigService` Bean；尚无通过状态的
+Resource→Deploy→Runtime 硬验收。
 
-**优化方向**：按 development-plan G5~G10 定义共同验收清单；CI 拉起 console + executor + web。
+**优化方向**：先恢复三项后端应用上下文启动，再按 development-plan G5~G10
+跑通共同验收清单；不得通过 Mock 或跳过健康检查把关口标为通过。
 
 ---
 
