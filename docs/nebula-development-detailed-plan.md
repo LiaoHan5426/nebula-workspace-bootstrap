@@ -163,3 +163,25 @@ flowchart TD
 - [x] `nebula/docs/implementation-backlog.md`：配置中心专项已落地并从 P1 backlog 移除，仅保留可选治理增强。
 - [x] `nebula/docs/development-status.md`：区分业务配置 REST 与已完成的配置中心能力。
 - [x] `nebula/docs/system/config.md`：区分 system-config、module-config、nebula-config 三者职责。
+
+---
+
+## 3. nebula-plugin 与 Camel 插件重构专项
+
+### 3.1 完成项（2026-07-26）
+
+- [x] 以 `SpringBootPluginManager` + PF4J 作为唯一生产加载链路，移除未被生产模块引用的 `nebula-plugin-spi/runtime/manager/loader` 第二套状态机。
+- [x] 仓库模型统一为 `NebulaPluginDescriptor`，`nebula-plugin-repository` 不再依赖旧 SPI。
+- [x] Maven 仓库使用真实 HTTP/JAR 下载，支持版本元数据、搜索、SHA-256、制品格式校验和同版本冲突检测。
+- [x] 本地仓库对 Maven 坐标进行安全编码，阻止目录穿越，并支持重启后重建索引。
+- [x] `nebula-camel-plugin-api` 只依赖稳定 `nebula-plugin-sdk`，不再向插件开发者泄漏 `plugin-core` 内核上下文。
+- [x] 平台/Camel descriptor 在插件启动前校验 schema、身份、版本、领域入口、Connector 唯一性以及声明与 PF4J 发现结果的一致性。
+- [x] Executor 插件加载改为失败回滚；下载文件名限制在插件目录内；旧版本完成过渡时真实卸载；租户+状态查询条件已修正。
+- [x] MySQL/PostgreSQL/HTTP 内置插件声明 `capabilities` 与 `domainDescriptors.camel`。
+
+### 3.2 后续可选治理
+
+- 插件制品签名、可信供应商证书与密钥轮换。
+- 解析 `compatibility` 与 `dependencies` 的语义化版本约束并在安装前求解。
+- 为 Nexus/Artifactory 等私有仓库提供专用搜索适配器。
+- 前端插件市场消费 descriptor 的 `configSchema` / `nodeSchema`，形成低代码目录。

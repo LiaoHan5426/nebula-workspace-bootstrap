@@ -25,7 +25,7 @@
 | 安全与租户   | security/tenant                             | 13     | 5      | 6        | 2           | JWT/OAuth/RBAC 可用；租户拦截器弱（不改写 SQL）                |
 | 平台核心模型 | resource/governance/release/version-control | 17     | 3      | 9        | 5           | API 链已串；**Deploy 仅打日志**，非生产闭环                    |
 | 平台能力域   | config/task/cluster/subscribe               | 22     | 5      | 11       | 6           | Cron/Trigger 可用；DAG/分片未接入执行                          |
-| 插件平台     | plugin                                      | 11     | 6      | 3        | 2           | PF4J 本地安装可用；Maven 远程为 placeholder                    |
+| 插件平台     | plugin                                      | 7      | 5      | 2        | 0           | PF4J 主链路、真实 Maven 下载、统一 descriptor 与版本冲突检测已落地 |
 | Camel集成    | camel                                       | 22     | 12     | 8        | 2           | Console/Executor 可演示；CDC 有 Debezium 但易回落模拟          |
 | 系统与业务   | system/modules                              | 12     | 5      | 5        | 2           | user/config/file 可用；organization CRUD 有，租户绑定未齐      |
 | 平台应用     | platform                                    | 2      | 1      | 1        | 0           | platform-console 依赖聚合 + OpenAPI；非仅 Health               |
@@ -188,13 +188,13 @@
 
 ---
 
-### B-8. 插件远程仓库为假下载（P3）[本地可用 / 远程骨架]
+### B-8. 插件平台与远程仓库（P3）[核心改造已完成 / 治理增强可选]
 
-**现状**：PF4J 本地 `PluginInstallService` 可真实 load/start；Console 插件 REST 可用。
+**现状**（2026-07-26）：PF4J `SpringBootPluginManager` 已成为唯一生产加载链路；远程 Maven 仓库支持真实 HTTP 下载、版本枚举、搜索、JAR/Content-Type 校验与 SHA-256；本地仓库支持安全路径、版本冲突检测；平台 REST 已接真实仓库服务。
 
-**仍缺**：`MavenRemotePluginRepository.download()` 写入 `"placeholder-jar"`；`search()` 返回空。
+通用 `NebulaPluginDescriptor` 与 Camel 领域 descriptor 已在加载前执行 schema、身份、版本、领域入口及 Connector 声明/运行时一致性校验。旧 `plugin-spi/runtime/manager/loader` 第二套实验链路已移除。
 
-**优化方向**：真实 HTTP/Maven 下载 + 仓库索引 + 版本冲突检测；前端插件市场对接。
+**仍可增强**：制品签名/可信供应商校验、私有仓库专用搜索索引、平台兼容范围与依赖约束求解、前端插件市场完整对接。
 
 ---
 
@@ -411,7 +411,7 @@
 | 契约生成但未消费                | 前后端字段漂移   | CI 强制 diff / 迁移手写 DTO    |
 | Platform 替代 demo 造成回归     | 演示中断         | 过渡期双入口                   |
 | JDK25 + Spring Boot4 生态成熟度 | 依赖兼容         | BOM 锁版本，定期升级验证       |
-| Maven 远程插件 placeholder      | 插件市场不可用   | 明确标注骨架，勿对外宣传已完成 |
+| 插件制品仅有哈希、尚无签名信任链 | 供应链可信度不足 | 后续接入签名、可信供应商与密钥轮换 |
 | nebula-config 误当配置中心使用  | 启动顺序被迫人工管控，生产配置能力不足 | Phase2 引入 basic/center 双模式、启动期加载、远端 provider 与失败策略 |
 
 ---
@@ -442,7 +442,7 @@
 | B-2 CDC「已完成」                  | Debezium 有代码；**模拟仍是默认/回退支路** |
 | B-3 任务调度「已完成」             | Cron/Trigger 可用；**DAG/分片未接线**      |
 | B-4 租户拦截器「已实现」           | 类存在；**不改写 SQL**                     |
-| B-8 远程 Maven「已实现」           | **placeholder-jar**                        |
+| B-8 远程 Maven「已实现」           | **已完成真实下载、索引/版本查询、哈希与冲突检测；签名信任链待增强** |
 | B-9 Observability「已实现」        | 内存 RouteTracer；**无 OTel**              |
 | F-2 契约「已完成」                 | 管道完成；**业务未消费**                   |
 | backlog「console 仅 Health」       | **已过时** — 依赖聚合 + OpenAPI 已有       |
