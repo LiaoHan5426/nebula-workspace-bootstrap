@@ -1,1029 +1,467 @@
-# Nebula Studio 前端架构分析与重构方案
+# Nebula Studio 前端架构现状与增量重构计划
 
-## 1. 现状分析
+> 文档版本：v2.0
+>
+> 最后更新：2026-07-26
+>
+> 代码基线：`F:\nebula-workspace\nebula-studio`
+>
+> 关联文档：[Nebula 当前状态分析](./nebula-current-state-analysis.md)、[Nebula 详细开发规划](./nebula-development-detailed-plan.md)
 
-### 1.1 项目定位
+## 1. 文档目的
 
-Nebula Studio 是 Nebula 平台的管理控制台前端，采用 **Monorepo + Electron + Web** 双启动模式：
+本文基于当前 `nebula-studio` 代码重新校准前端重构计划。旧版方案形成于
+2026-06-25，其中多项“目标能力”已经落地，部分目录迁移建议也已失去必要性。
 
-- **Electron 模式** (`apps/electron`)：桌面客户端，支持离线运行、系统级能力集成
-- **Web 模式** (`apps/web`)：浏览器访问，单页应用通过 iframe 嵌入子应用
+本次修订遵循以下原则：
 
-### 1.2 当前架构概览
-
-```
-J:/Code/nebula-workspace/nebula-studio/
-├── apps/
-│   ├── electron/              # J:/Code/nebula-workspace/nebula-studio/apps/electron
-│   ├── electron-preload/      # J:/Code/nebula-workspace/nebula-studio/apps/electron-preload
-│   ├── web/                   # J:/Code/nebula-workspace/nebula-studio/apps/web
-│   └── sub-web/               # J:/Code/nebula-workspace/nebula-studio/apps/sub-web
-│       ├── frontend/          # @nebula-studio-renderer/main
-│       ├── integration/       # @nebula-studio-renderer/integration
-│       ├── settings/          # @nebula-studio-renderer/settings
-│       ├── login/             # @nebula-studio-renderer/login
-│       └── docs/              # @nebula-studio-renderer/docs
-├── packages/                  # J:/Code/nebula-workspace/nebula-studio/packages
-│   ├── contracts/             # OpenAPI 生成契约（scripts/generate-contracts.mjs）
-│   ├── core/app-shell/        # Shell 运行时 SDK
-│   ├── core/shell/            # Shell 页面容器组合
-│   ├── features/plugin-installer/
-│   └── ui/nebula-ui/
-├── internal/vite/             # defineNebulaConfig、standardApiProxy
-└── e2e/                       # Playwright 验收（含 g5-smoke.spec.ts）
-```
-
-### 1.3 Electron Preload 层分析
-
-Electron Preload 是 Electron 安全架构的核心，负责在主进程（Node.js）与渲染进程（浏览器）之间建立安全的 IPC 桥梁。
-
-#### 当前 Preload 结构
-
-| 包名                              | 作用域   | 暴露的 API                                                                                                                    | 依赖                                           |
-| --------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| `@nebula-studio-preload/main`     | 主窗口   | `shell.openLogin`、`auth.*`（login/getSession/establishSession/logout）、`notify.*`（app/system/onApp/respond/onAppResponse） | `@electron-toolkit/preload`、`electron-shared` |
-| `@nebula-studio-preload/docs`     | 文档窗口 | `notify.*`（仅 notify bridge，无 auth）                                                                                       | `@electron-toolkit/preload`、`electron-shared` |
-| `@nebula-studio-preload/settings` | 设置窗口 | `settings.*`（getTheme/setTheme/onThemeChanged）                                                                              | `@electron-toolkit/preload`                    |
-
-#### Preload 与窗口的绑定关系
-
-```
-app.config.ts (shellPresentationConfig)
-    │
-    ├── windows.main     → preload: 'main'    → @nebula-studio-preload/main
-    ├── windows.docs     → preload: 'docs'    → @nebula-studio-preload/docs
-    ├── windows.settings → preload: 'settings'→ @nebula-studio-preload/settings
-    └── windows.integration → preload: 'main' → @nebula-studio-preload/main（复用）
-```
-
-#### 问题分析
-
-1. **代码重复严重**：三个 Preload 脚本中 `contextBridge.exposeInMainWorld` 逻辑完全相同，仅 API 定义不同
-2. **Notify Bridge 重复**：`main` 和 `docs` 都实现了 notify bridge（app/system/onApp/respond/onAppResponse），但 IPC 通道名不同（`notify:app` vs `notify:bridge:app`）
-3. **类型定义分散**：`preload.d.ts` 仅存在于 `main` 和 `docs`，`settings` 缺少类型声明
-4. **新增窗口需手动创建 Preload**：违反开闭原则，每次新增子应用都要创建新的 Preload 包
+1. 以当前代码为事实来源，不沿用旧路径和旧完成度。
+2. 保留已经稳定的 `apps/sub-web/*` 结构，不进行纯命名型大迁移。
+3. 优先消除真实重复源、契约漂移和运行时分叉。
+4. 新增业务能力前先完成共享层和验收边界。
+5. Web 与 Electron 必须复用同一份窗口、认证和 API 契约。
 
 ---
 
-## 2. Code Review Graph 架构分析结果
+## 2. 当前架构基线
 
-### 2.1 社区结构（Communities）
+### 2.1 仓库结构
 
-通过 code-review-graph 的 Leiden 算法检测，nebula-studio 识别出 **18 个代码社区**：
-
-| 社区名称             | 节点数 | 内聚度 | 主导语言   | 说明                                           |
-| -------------------- | ------ | ------ | ---------- | ---------------------------------------------- |
-| `api-handle`         | 545    | 0.21   | Vue        | API 处理逻辑（集中在 integration 子应用）      |
-| `utils-setup`        | 125    | 0.22   | TypeScript | 工具函数与初始化逻辑                           |
-| `web-shell`          | 97     | 0.29   | TypeScript | Web 壳层核心（shell-entry、presentation 安装） |
-| `modules-window`     | 79     | 0.27   | TypeScript | Electron 窗口管理模块                          |
-| `crypto-generate`    | 61     | 0.36   | TypeScript | 加密相关工具                                   |
-| `utils-node`         | 60     | 0.30   | TypeScript | Node 环境工具                                  |
-| `src-theme`          | 33     | 0.21   | TypeScript | 主题管理                                       |
-| `composables-toggle` | 30     | 0.04   | Vue        | 组合式函数（内聚度低，需重构）                 |
-| `src-api`            | 26     | 0.28   | TypeScript | API 客户端封装                                 |
-| `rules-nebula`       | 25     | 0.26   | TypeScript | 代码规范规则                                   |
-| `src-app`            | 21     | 0.00   | TypeScript | 应用根组件（内聚度为 0，分散严重）             |
-| `configs-sort`       | 18     | 0.40   | TypeScript | 配置排序工具                                   |
-| `components-handle`  | 8      | 0.03   | Vue        | 组件处理逻辑（内聚度极低）                     |
-| `src-monorepo`       | 7      | 0.21   | TypeScript | Monorepo 工具                                  |
-| `embed-mount`        | 5      | 0.00   | TypeScript | Embed 挂载逻辑                                 |
-
-**关键发现**：
-
-- `api-handle` 社区规模最大（545 节点），表明 **integration 子应用承载了过多业务逻辑**
-- `composables-toggle` 和 `components-handle` 内聚度极低（< 0.05），存在**职责混乱**
-- `src-app` 内聚度为 0，说明**根组件缺乏统一架构约束**
-
-### 2.2 Hub Nodes（架构热点）
-
-Top 15 最高连接度节点（修改影响范围最大）：
-
-| 节点                                   | 总度数 | 入度 | 出度 | 所属社区       | 风险等级 |
-| -------------------------------------- | ------ | ---- | ---- | -------------- | -------- |
-| `WindowManager.registerCoreIpc`        | 87     | 1    | 86   | modules-window | 🔴 极高  |
-| `consoleRequest` (integration)         | 37     | 36   | 1    | api-handle     | 🟡 高    |
-| `list` (consoleApi)                    | 37     | 6    | 31   | api-handle     | 🟡 高    |
-| `setup` (NebulaDropdown)               | 37     | 3    | 34   | utils-setup    | 🟡 高    |
-| `systemRequest` (settings)             | 35     | 34   | 1    | api-handle     | 🟡 高    |
-| `setup` (NebulaAnchor)                 | 31     | 1    | 30   | utils-setup    | 🟡 高    |
-| `IpcNotificationModule.setup`          | 30     | 1    | 29   | modules-window | 🟡 高    |
-| `connect` (useSubscriptionEvents)      | 30     | 1    | 29   | api-handle     | 🟡 高    |
-| `installWebPresentation`               | 27     | 1    | 26   | web-shell      | 🟢 中    |
-| `createEditor` (use-diff-editor)       | 26     | 3    | 23   | api-handle     | 🟢 中    |
-| `applyDefinitionFromProps` (DagEditor) | 26     | 2    | 24   | utils-node     | 🟢 中    |
-
-**关键发现**：
-
-- `WindowManager.registerCoreIpc` 是**最大架构热点**（87 度），任何 IPC 通道变更都会波及大量代码
-- `api-handle` 社区占据 Top 15 中的 5 席，表明 **API 客户端层耦合严重**
-- UI 组件（NebulaDropdown、NebulaAnchor）的 `setup` 函数出度过高，存在**组件初始化逻辑泄漏**
-
-### 2.3 Bridge Nodes（架构瓶颈）
-
-Betweenness Centrality 最高的节点（跨社区通信 chokepoints）：
-
-| 节点                                  | Betweenness | 所属社区   | 说明                             |
-| ------------------------------------- | ----------- | ---------- | -------------------------------- |
-| `it:invokes onUnauthorized...` (test) | 0.0019      | src-api    | 认证失败测试用例成为桥梁（异常） |
-| `beforeEach` (authGuard test)         | 0.0019      | api-handle | 路由守卫测试                     |
-| `computeAutoLayout`                   | 0.0018      | utils-node | DAG 自动布局算法                 |
-| `clearAuthSession`                    | 0.0013      | api-handle | 清除认证会话                     |
-
-**关键发现**：
-
-- **测试代码出现在 Bridge Nodes 中是不正常的**，说明生产代码与测试代码边界模糊
-- `clearAuthSession` 作为桥梁节点，表明**认证状态管理分散**，多处直接操作 Session
-
-### 2.4 跨社区耦合
-
-当前图谱显示 **0 条跨社区边**，这可能是因为：
-
-1. 图谱构建时未启用跨文件依赖追踪
-2. 或项目确实存在严重的**模块隔离问题**（各子应用独立打包，缺少共享层）
-
-结合代码审查，实际问题是：**子应用之间通过 `app-shell` 隐式耦合**，但 graph 未能捕捉这种运行时依赖。
-
----
-
-## 3. 与后端规划的匹配度评估
-
-### 3.1 后端规划回顾（来自 `docs/模块规划.md`）
-
-后端 Nebula 平台的核心域包括：
-
-| 后端模块            | 职责                             | 对应前端功能                   |
-| ------------------- | -------------------------------- | ------------------------------ |
-| `nebula-camel`      | 接口集成平台（Route、DAG、插件） | Integration 子应用             |
-| `nebula-task`       | 任务调度                         | （缺失）                       |
-| `nebula-plugin`     | 动态插件体系                     | （部分在 Integration 中）      |
-| `nebula-config`     | 动态配置（CORS、CSP、策略）      | Settings 子应用                |
-| `nebula-system`     | 系统域（用户、组织、配置项）     | Settings 子应用                |
-| `nebula-governance` | 资源治理（审批、审计）           | （缺失）                       |
-| `nebula-release`    | 发布管理                         | （缺失）                       |
-| `nebula-subscribe`  | 事件订阅                         | Integration 中的 Subscriptions |
-| `nebula-security`   | 安全认证                         | Login + app-shell 认证层       |
-
-### 3.2 匹配度分析
-
-#### ✅ 已匹配部分
-
-1. **Integration 子应用 ↔ `nebula-camel`**
-
-   - DAG 编辑器（`nebula-dag-editor`）对应 Camel DAG 编排
-   - BPMN 编辑器（`nebula-flow-editor`）对应治理工作流
-   - 订阅管理对应 `camel-subscribe`
-
-2. **Settings 子应用 ↔ `nebula-system` + `nebula-config`**
-
-   - 用户管理、组织管理
-   - 配置项管理
-
-3. **Login ↔ `nebula-security`**
-
-   - JWT 认证、Session 管理
-
-#### ❌ 缺失部分
-
-| 后端模块                 | 前端缺失功能                     | 影响                                 |
-| ------------------------ | -------------------------------- | ------------------------------------ |
-| `nebula-task`            | 任务调度管理界面                 | 无法可视化配置 Cron 任务、依赖触发器 |
-| `nebula-governance`      | 资源申请、审批流、审计日志       | 缺少治理闭环                         |
-| `nebula-release`         | 发布管理、版本对比、回滚         | 缺少发布流水线可视化                 |
-| `nebula-plugin`          | 插件市场、在线安装、生命周期管理 | 插件能力未暴露给管理员               |
-| `nebula-cluster`         | 集群节点监控、分布式锁状态       | 运维能力缺失                         |
-| `nebula-version-control` | 资源版本历史、差异对比           | 缺少版本管理能力                     |
-
-#### ⚠️ 不合理部分
-
-1. **子应用集成方式混乱**
-
-   - 当前新增子应用需要同时修改：
-     - `packages/app-shell/src/common/shellPresentationConfig.ts`（窗口声明）
-     - `apps/sub-web/frontend/src/platform/integratedApps.ts`（集成元数据）
-     - `apps/web/vite.config.ts`（Vite 别名映射）
-     - `apps/electron/app.config.ts`（Electron 窗口配置）
-   - **违反开闭原则**：每次新增子应用都要改动多个配置文件
-
-2. **Packages 依赖关系不合理**
-
-   - `nebula-integration-panel` 依赖 `nebula-flow-editor`，但后者又依赖 `nebula-ui`
-   - 形成**深层嵌套依赖**，导致单个组件更新触发全量重建
-   - `electron-shared` 和 `electron-shared-vue` 职责不清，前者纯 TS，后者引入 Vue
-
-3. **Web 与 Electron 启动路径不一致**
-
-   - Web 通过 `web-boot.ts` 的 `?embed` 参数动态挂载子应用
-   - Electron 通过 `boot.ts` 的 `import.meta.glob` 动态加载
-   - 两者逻辑重复，但实现细节不同，**维护成本高**
-
-4. **认证状态管理分散**
-
-   - `app-shell` 提供 `readWebAuthSession` / `writeWebAuthSession`
-   - `integration` 子应用有自己的 `bootstrap-auth.ts`
-   - `settings` 子应用没有独立的认证引导
-   - **缺少统一的 Auth Provider**
-
----
-
-## 4. 重构方案
-
-### 4.1 目标架构
-
-```
+```text
 nebula-studio/
 ├── apps/
-│   ├── electron/              # Electron 壳层（不变）
-│   ├── electron-preload/      # 【重构】统一 Preload 生成器（见 4.3 节）
-│   │   └── src/
-│   │       ├── index.ts       # 统一入口（根据窗口配置动态生成 API）
-│   │       ├── capabilities/  # 能力模块（auth、notify、settings 等）
-│   │       └── types.ts       # 统一类型定义
-│   ├── web/                   # Web 壳层（简化为纯路由分发器）
-│   └── renderers/             # 【新增】统一子应用目录
-│       ├── shell/             # 壳层主界面（原 sub-web/frontend）
-│       ├── integration/       # 集成平台
-│       ├── settings/          # 设置中心
-│       ├── login/             # 登录页
-│       ├── docs/              # 文档中心
-│       ├── tasks/             # 【新增】任务调度管理
-│       ├── governance/        # 【新增】资源治理
-│       ├── release/           # 【新增】发布管理
-│       └── plugins/           # 【新增】插件市场
+│   ├── electron/                 # Electron 主进程和 renderer 构建入口
+│   ├── electron-preload/src/     # 统一 Preload 实现
+│   ├── web/                      # Web Shell
+│   └── sub-web/
+│       ├── frontend/             # Shell 主界面
+│       ├── integration/          # 集成、插件、任务、治理、监控
+│       ├── settings/             # 用户、组织、权限、配置
+│       ├── login/                # 登录
+│       └── docs/                 # UI/使用文档
+├── configs/
+│   ├── windows.json              # 窗口、Renderer、API 基址单源配置
+│   └── windows.schema.json       # 配置 Schema
 ├── packages/
-│   ├── core/                  # 【重组】核心共享层
-│   │   ├── app-shell/         # 壳层抽象（从原位置迁移）
-│   │   ├── api-client/        # API 客户端
-│   │   ├── auth-provider/     # 【新增】统一认证提供者
-│   │   └── electron-bridge/   # 【合并】electron-shared + electron-shared-vue
-│   ├── ui/                    # 【重组】UI 层
-│   │   ├── nebula-ui/         # 基础组件库
-│   │   ├── nebula-layout/     # 布局组件
-│   │   └── icons/             # 【新增】图标库（从 integratedApps.ts 提取）
-│   ├── editors/               # 【重组】编辑器集合
-│   │   ├── dag-editor/        # DAG 编辑器
-│   │   ├── flow-editor/       # BPMN 编辑器
-│   │   ├── code-editor/       # 【重命名】原 nebula-editor → code-editor
-│   │   └── low-code-form/     # 【重命名】原 nebula-low-render
-│   ├── features/              # 【新增】业务特性包（可被多个子应用复用）
-│   │   ├── subscription-manager/  # 订阅管理
-│   │   ├── route-designer/    # Route 设计器
-│   │   ├── plugin-installer/  # 插件安装器
-│   │   └── version-diff/      # 版本对比器
-│   └── shared-utils/          # 【新增】工具函数
-│       ├── monorepo/          # 原 internal/node
-│       └── vite-helpers/      # 原 internal/vite 中的通用插件
-├── internal/                  # 【精简】仅保留构建工具
-│   ├── vite/                  # Vite 配置封装
-│   └── scripts/               # 构建脚本
-└── configs/                   # 【新增】集中配置
-    ├── windows.json           # 【关键】窗口声明集中管理
-    ├── integrations.json      # 【关键】子应用集成元数据
-    └── aliases.json           # 【关键】Vite 别名映射
+│   ├── contracts/                # 手写契约 + OpenAPI 生成结果
+│   ├── core/
+│   │   ├── api-client/
+│   │   ├── app-shell/
+│   │   ├── auth/
+│   │   ├── auth-provider/
+│   │   ├── electron-shared/
+│   │   ├── msw/
+│   │   ├── runtime/
+│   │   ├── shell/
+│   │   ├── sse-events/
+│   │   └── tenant/
+│   ├── ui/
+│   ├── editors/
+│   └── features/
+│       └── use-confirm/
+├── internal/vite/                # Vite+/Electron/Vite 配置封装
+├── scripts/
+│   ├── generate-window-configs.mjs
+│   └── generate-contracts.mjs
+└── e2e/                          # Playwright 冒烟与关键路径测试
 ```
 
-### 4.2 关键改进点
+### 2.2 当前运行模型
 
-#### 改进 1：子应用配置集中化
+```mermaid
+flowchart LR
+  C["configs/windows.json"] --> G["generate-window-configs.mjs"]
+  G --> M["app-shell/_generated-windows.ts"]
+  M --> W["Web Shell"]
+  M --> E["Electron"]
+  M --> S["Shell integratedApps catalog"]
 
-**问题**：当前新增子应用需要修改 4+ 个文件
+  E --> P["统一 Preload"]
+  P --> A["auth capability"]
+  P --> N["notify capability"]
+  P --> T["settings capability"]
+  P --> H["shell capability"]
 
-**解决方案**：引入集中配置文件
-
-**`configs/windows.json`**：
-
-```json
-{
-  "windows": {
-    "main": {
-      "preload": "main",
-      "renderer": "shell",
-      "label": "工作台",
-      "iconSvg": "<svg>...</svg>",
-      "defaultEnabled": true,
-      "integratable": true,
-      "requiresAuth": true
-    },
-    "integration": {
-      "preload": "main",
-      "renderer": "integration",
-      "label": "集成平台",
-      "iconSvg": "<svg>...</svg>",
-      "defaultEnabled": true,
-      "integratable": true,
-      "requiresAuth": true
-    },
-    "tasks": {
-      "preload": "main",
-      "renderer": "tasks",
-      "label": "任务调度",
-      "iconSvg": "<svg>...</svg>",
-      "defaultEnabled": false,
-      "integratable": true,
-      "requiresAuth": true
-    }
-  },
-  "displayOrder": ["main", "integration", "tasks", "settings", "docs"]
-}
+  W --> R["sub-web renderers"]
+  E --> R
+  R --> AP["AuthProvider / API Client"]
+  AP --> B1["platform-console :8090"]
+  AP --> B2["camel-console :8080"]
+  AP --> B3["executor :8081"]
 ```
 
-**自动生成机制**：
-
-1. 构建时读取 `configs/windows.json`
-2. 自动生成：
-   - `packages/core/app-shell/src/common/shellPresentationConfig.ts`
-   - `apps/renderers/shell/src/platform/integratedApps.ts`
-   - `apps/web/vite.rendererAlias.ts` 的映射表
-   - `apps/electron/app.config.ts` 的窗口声明
-
-**新增子应用流程**（从 4 步缩减为 1 步）：
-
-```bash
-# 1. 在 configs/windows.json 中添加新窗口（含 preloadCapabilities 声明）
-# 2. 创建 apps/renderers/tasks/ 目录并开发
-# 3. 运行 pnpm run generate:config（自动生成所有配置，包括统一 Preload 的能力注入）
-# 4. 完成！无需手动创建 Preload 包
-```
-
-#### 改进 2：统一认证提供者
-
-**问题**：认证状态管理分散在 `app-shell`、`integration/bootstrap-auth`、各子应用
-
-**解决方案**：新建 `packages/core/auth-provider`
-
-**`packages/core/auth-provider/package.json`**：
-
-```json
-{
-  "name": "@nebula-studio/auth-provider",
-  "version": "0.0.0",
-  "type": "module",
-  "exports": {
-    ".": "./src/index.ts",
-    "./vue": "./src/vue/AuthProvider.vue"
-  },
-  "dependencies": {
-    "@nebula-studio/api-client": "workspace:^",
-    "vue": "catalog:vue"
-  }
-}
-```
-
-**`packages/core/auth-provider/src/index.ts`**：
-
-```typescript
-export interface AuthSession {
-  accessToken: string;
-  refreshToken?: string;
-  userId: string;
-  tenantId?: string;
-  expiresAt: number;
-}
-
-export class AuthProvider {
-  private session: AuthSession | null = null;
-  private listeners: Array<(session: AuthSession | null) => void> = [];
-
-  async login(username: string, password: string): Promise<void> {
-    // 统一登录逻辑
-  }
-
-  async logout(): Promise<void> {
-    this.session = null;
-    this.notifyListeners();
-  }
-
-  getSession(): AuthSession | null {
-    return this.session;
-  }
-
-  onSessionChange(callback: (session: AuthSession | null) => void): () => void {
-    this.listeners.push(callback);
-    return () => {
-      this.listeners = this.listeners.filter((l) => l !== callback);
-    };
-  }
-
-  private notifyListeners(): void {
-    for (const listener of this.listeners) {
-      listener(this.session);
-    }
-  }
-}
-
-export const globalAuthProvider = new AuthProvider();
-```
-
-**`packages/core/auth-provider/src/vue/AuthProvider.vue`**：
-
-```vue
-<script setup lang="ts">
-import { provide, ref } from "vue";
-import { globalAuthProvider, type AuthSession } from "../index";
-
-const session = ref<AuthSession | null>(globalAuthProvider.getSession());
-
-globalAuthProvider.onSessionChange((newSession) => {
-  session.value = newSession;
-});
-
-provide("auth", globalAuthProvider);
-</script>
-
-<template>
-  <slot :session="session" :login="globalAuthProvider.login" :logout="globalAuthProvider.logout" />
-</template>
-```
-
-**使用方式**（所有子应用统一）：
-
-```vue
-<!-- apps/renderers/integration/src/App.vue -->
-<script setup lang="ts">
-import AuthProvider from "@nebula-studio/auth-provider/vue";
-</script>
-
-<template>
-  <AuthProvider v-slot="{ session, login, logout }">
-    <RouterView v-if="session" />
-    <LoginPage v-else @login="login" />
-  </AuthProvider>
-</template>
-```
-
-#### 改进 3：Packages 依赖优化
-
-**当前问题**：
-
-```
-nebula-integration-panel
-  └─ nebula-flow-editor
-       └─ nebula-ui
-            └─ codemirror, vxe-table, wangeditor...
-```
-
-**重构后**：
-
-```
-packages/editors/
-├── dag-editor/          # 仅依赖 @vue-flow/* + nebula-ui（轻量）
-├── flow-editor/         # 仅依赖 bpmn-js + nebula-ui
-├── code-editor/         # 仅依赖 monaco-editor
-└── low-code-form/       # 仅依赖 nebula-ui
-
-packages/features/
-├── subscription-manager/  # 依赖 api-client + dag-editor
-├── route-designer/        # 依赖 api-client + code-editor + dag-editor
-└── plugin-installer/      # 依赖 api-client + nebula-ui
-```
-
-**关键原则**：
-
-- **编辑器包不互相依赖**，避免传递性依赖爆炸
-- **业务特性包（features）** 组合多个编辑器，供子应用按需引入
-- **nebula-ui** 拆分为更细粒度的组件包（可选）：
-  ```
-  packages/ui/nebula-ui-base/     # 按钮、输入框等基础组件
-  packages/ui/nebula-ui-data/     # VxeTable、图表等数据组件
-  packages/ui/nebula-ui-editor/   # CodeMirror、WangEditor 封装
-  ```
-
-#### 改进 4：Web 与 Electron 启动路径统一
-
-**当前问题**：
-
-- Web：`web-boot.ts` → `embed/*-entry.ts` → 手动 mount Vue App
-- Electron：`boot.ts` → `import.meta.glob` → 动态 import `main.ts`
-
-**统一方案**：
-
-**`apps/renderers/*/src/boot.ts`**（所有子应用统一入口）：
-
-```typescript
-import { createApp } from "vue";
-import App from "./App.vue";
-import router from "./router";
-import { AuthProvider } from "@nebula-studio/auth-provider/vue";
-import { installPresentation } from "@nebula-studio/app-shell";
-
-// 1. 安装 Presentation 层（Web/Electron 通用）
-installPresentation({
-  scope: import.meta.env.VITE_RENDERER_SCOPE,
-});
-
-// 2. 创建 Vue App
-const app = createApp(App).use(AuthProvider).use(router);
-
-// 3. 路由守卫（统一认证检查）
-router.beforeEach(async (to) => {
-  if (to.meta.requiresAuth) {
-    const session = globalAuthProvider.getSession();
-    if (!session) {
-      return "/login";
-    }
-  }
-});
-
-// 4. 挂载
-app.mount("#app");
-```
-
-**Web 宿主简化**（`apps/web/src/web-boot.ts`）：
-
-```typescript
-const surface = new URLSearchParams(location.search).get("embed") || "shell";
-await import(`../renderers/${surface}/src/boot.ts`);
-```
-
-**Electron 简化**（`apps/electron/src/renderer/boot.ts`）：
-
-```typescript
-const windowId = new URLSearchParams(window.location.search).get("renderer") || "main";
-await import(`../../../renderers/${windowId}/src/boot.ts`);
-```
-
-**优势**：
-
-- 子应用无需关心运行在 Web 还是 Electron
-- 认证、路由、Presentation 层统一处理
-- 新增子应用只需创建 `apps/renderers/<name>/src/boot.ts`
-
-#### 改进 4.5：Electron Preload 层重构
-
-**当前问题**：
-
-1. 三个 Preload 脚本（`main`、`docs`、`settings`）中 `contextBridge.exposeInMainWorld` 逻辑完全重复
-2. Notify Bridge 在 `main` 和 `docs` 中重复实现，仅 IPC 通道名不同
-3. 类型定义分散，`settings` 缺少 `preload.d.ts`
-4. 新增窗口需手动创建新的 Preload 包，违反开闭原则
-
-**重构方案**：统一 Preload 生成器 + 能力模块化
-
-**`apps/electron-preload/package.json`**：
-
-```json
-{
-  "name": "@nebula-studio-preload/unified",
-  "version": "0.0.0",
-  "type": "module",
-  "main": "./src/index.ts",
-  "dependencies": {
-    "@electron-toolkit/preload": "catalog:electron",
-    "@nebula-studio-electron/electron-shared": "workspace:^"
-  },
-  "devDependencies": {
-    "@types/node": "catalog:types",
-    "electron": "catalog:electron"
-  }
-}
-```
-
-**`apps/electron-preload/src/index.ts`**（统一入口）：
-
-```typescript
-import { contextBridge } from "electron";
-import { electronAPI } from "@electron-toolkit/preload";
-import { createAuthCapability } from "./capabilities/auth";
-import { createNotifyCapability } from "./capabilities/notify";
-import { createSettingsCapability } from "./capabilities/settings";
-import { getWindowConfig } from "./config";
-
-const windowConfig = getWindowConfig();
-
-const api = {
-  electron: electronAPI,
-  auth: windowConfig.capabilities.includes("auth") ? createAuthCapability() : undefined,
-  notify: windowConfig.capabilities.includes("notify") ? createNotifyCapability() : undefined,
-  settings: windowConfig.capabilities.includes("settings") ? createSettingsCapability() : undefined,
-};
-
-if (process.contextIsolated) {
-  try {
-    contextBridge.exposeInMainWorld("electron", api.electron);
-    contextBridge.exposeInMainWorld("api", api);
-  } catch (error) {
-    console.error("[preload] Failed to expose APIs:", error);
-  }
-} else {
-  // @ts-expect-error — non-isolated fallback
-  window.electron = api.electron;
-  // @ts-expect-error — non-isolated fallback
-  window.api = api;
-}
-```
-
-**`apps/electron-preload/src/capabilities/auth.ts`**：
-
-```typescript
-import { ipcRenderer } from "electron";
-import { electronAPI } from "@electron-toolkit/preload";
-
-export function createAuthCapability() {
-  return {
-    async login(payload: { user: string; password: string }) {
-      const r = await electronAPI.ipcRenderer.invoke("auth:login", payload);
-      if (!r.ok) throw new Error(r.error);
-      return r;
-    },
-    getSession(): Promise<{ user: string; token?: string } | null> {
-      return electronAPI.ipcRenderer.invoke("auth:get-session");
-    },
-    establishSession(payload: { user: string; token: string }): Promise<boolean> {
-      return electronAPI.ipcRenderer.invoke("auth:establish-session", payload);
-    },
-    logout(): Promise<boolean> {
-      return electronAPI.ipcRenderer.invoke("auth:logout");
-    },
-  };
-}
-```
-
-**`apps/electron-preload/src/capabilities/notify.ts`**：
-
-```typescript
-import { ipcRenderer } from "electron";
-import type { IpcRendererEvent } from "electron";
-import { electronAPI } from "@electron-toolkit/preload";
-import type {
-  AppNotifyPayload,
-  AppNotifyResponsePayload,
-  NotifyBridgePayload,
-} from "@nebula-studio-electron/electron-shared";
-import { getWindowConfig } from "../config";
-
-export function createNotifyCapability() {
-  const SOURCE = getWindowConfig().id;
-  const useBridge = SOURCE !== "main"; // main 窗口直接使用 IPC，其他窗口走 bridge
-
-  return {
-    app(payload: AppNotifyPayload) {
-      const req: NotifyBridgePayload<AppNotifyPayload> = { source: SOURCE, payload };
-      const channel = useBridge ? "notify:bridge:app" : "notify:app";
-      return electronAPI.ipcRenderer.invoke(channel, req);
-    },
-    system(payload: { title: string; body: string }) {
-      const req: NotifyBridgePayload<{ title: string; body: string }> = { source: SOURCE, payload };
-      const channel = useBridge ? "notify:bridge:system" : "notify:system";
-      return electronAPI.ipcRenderer.invoke(channel, req);
-    },
-    onApp(listener: (payload: AppNotifyPayload) => void) {
-      const handler = (_event: IpcRendererEvent, payload: AppNotifyPayload) => listener(payload);
-      ipcRenderer.on("notify:app", handler);
-      return () => ipcRenderer.removeListener("notify:app", handler);
-    },
-    respond(payload: AppNotifyResponsePayload) {
-      const req: NotifyBridgePayload<AppNotifyResponsePayload> = { source: SOURCE, payload };
-      const channel = useBridge ? "notify:bridge:app:response" : "notify:app:response";
-      return electronAPI.ipcRenderer.invoke(channel, req);
-    },
-    onAppResponse(listener: (payload: AppNotifyResponsePayload) => void) {
-      const handler = (_event: IpcRendererEvent, payload: AppNotifyResponsePayload) =>
-        listener(payload);
-      ipcRenderer.on("notify:app:response", handler);
-      return () => ipcRenderer.removeListener("notify:app:response", handler);
-    },
-  };
-}
-```
-
-**`apps/electron-preload/src/capabilities/settings.ts`**：
-
-```typescript
-import { ipcRenderer } from "electron";
-import type { IpcRendererEvent } from "electron";
-import { electronAPI } from "@electron-toolkit/preload";
-
-type ThemeMode = "light" | "dark";
-
-export function createSettingsCapability() {
-  return {
-    getTheme(): Promise<ThemeMode> {
-      return electronAPI.ipcRenderer.invoke("settings:theme:get");
-    },
-    setTheme(theme: ThemeMode): Promise<ThemeMode> {
-      return electronAPI.ipcRenderer.invoke("settings:theme:set", { theme });
-    },
-    onThemeChanged(listener: (payload: { theme: ThemeMode }) => void) {
-      const handler = (_event: IpcRendererEvent, payload: { theme: ThemeMode }) =>
-        listener(payload);
-      ipcRenderer.on("settings:theme:changed", handler);
-      return () => ipcRenderer.removeListener("settings:theme:changed", handler);
-    },
-  };
-}
-```
-
-**`apps/electron-preload/src/config.ts`**：
-
-```typescript
-export interface WindowPreloadConfig {
-  id: string;
-  capabilities: Array<"auth" | "notify" | "settings" | "shell">;
-}
-
-// 从环境变量或构建时注入
-const PRELOAD_CONFIG: Record<string, WindowPreloadConfig> = {
-  main: { id: "main", capabilities: ["auth", "notify", "shell"] },
-  docs: { id: "docs", capabilities: ["notify"] },
-  settings: { id: "settings", capabilities: ["settings"] },
-  integration: { id: "integration", capabilities: ["auth", "notify"] },
-  tasks: { id: "tasks", capabilities: ["auth", "notify"] },
-  governance: { id: "governance", capabilities: ["auth", "notify"] },
-  release: { id: "release", capabilities: ["auth", "notify"] },
-  plugins: { id: "plugins", capabilities: ["auth", "notify"] },
-};
-
-export function getWindowConfig(): WindowPreloadConfig {
-  const windowId = new URLSearchParams(window.location.search).get("renderer") || "main";
-  return PRELOAD_CONFIG[windowId] || PRELOAD_CONFIG.main;
-}
-```
-
-**Electron 主进程侧配置更新**（`apps/electron/app.config.ts`）：
-
-```typescript
-export default {
-  electron: import.meta.dirname,
-  renderers: "renderers",
-  ...shellPresentationConfig,
-  modalRenderers,
-  // 新增：Preload 能力映射
-  preloadCapabilities: {
-    main: ["auth", "notify", "shell"],
-    docs: ["notify"],
-    settings: ["settings"],
-    integration: ["auth", "notify"],
-    tasks: ["auth", "notify"],
-    governance: ["auth", "notify"],
-    release: ["auth", "notify"],
-    plugins: ["auth", "notify"],
-  },
-} as const;
-```
-
-**优势**：
-
-1. **单一 Preload 包**：从 3 个独立包合并为 1 个，减少维护成本
-2. **能力模块化**：auth、notify、settings 等能力按需组合，新增窗口无需创建新包
-3. **类型统一**：所有窗口共享同一套类型定义
-4. **开闭原则**：新增子应用只需在 `preloadCapabilities` 中声明所需能力
+### 2.3 完成度矩阵
+
+| 能力 | 当前状态 | 代码事实 | 结论 |
+| --- | --- | --- | --- |
+| 窗口配置集中化 | 基本完成 | `configs/windows.json` + JSON Schema + 生成脚本 | 保留并继续收口 |
+| App Shell 分层 | 已完成 | `core/app-shell` 与 `core/shell` 已拆分 | 不再迁移目录 |
+| 统一认证 | 已完成 | `auth-provider` 为 Session 单一写入入口 | 后续补跨应用一致性测试 |
+| 统一 Preload | 已完成主体 | `electron-preload/src/unified.ts` + capability 工厂 | 仍有能力映射双源 |
+| Web/Electron 配置复用 | 基本完成 | 两端均消费内部 Vite manifest/config | 继续删除手工入口映射 |
+| API Client | 已完成基础层 | `core/api-client` 已有鉴权、响应解析和测试 | 需全面消费生成契约 |
+| OpenAPI 生成 | 管道完成 | `contracts/generated/platform-api.ts` 已生成 | 业务代码采用率不足 |
+| Integration 功能 | 功能较全但过载 | 插件、任务、服务治理、订阅、监控集中于单应用 | 需要按 feature 边界拆分 |
+| Features 共享包 | 未按旧计划落地 | 当前仅 `use-confirm` 为正式 feature 包 | 按真实复用需求提取 |
+| 编辑器边界 | 部分完成 | DAG/Flow 可用；`code-editor` 缺标准包入口 | 需要补齐导出和构建 |
+| 插件前端 | 基本可用 | 插件分类、市场、Connector、DAG Node Schema 已接入 | 需适配新版 descriptor 契约 |
+| E2E | 冒烟级 | 3 个 spec；关键流大量使用路由 Mock | 缺真实后端联调关口 |
 
 ---
 
-#### 改进 5：新增缺失的后端域对应前端模块
+## 3. 已完成事项
 
-根据后端规划，补充以下子应用：
+以下内容从后续重构范围中移除，避免重复建设。
 
-##### 5.1 Tasks 子应用（对应 `nebula-task`）
+### 3.1 配置与 Shell
 
-**`apps/renderers/tasks/package.json`**：
+- [x] 建立 `configs/windows.json` 和 `windows.schema.json`。
+- [x] 生成 `packages/core/app-shell/src/common/_generated-windows.ts`。
+- [x] Shell 集成目录从生成配置读取 label、icon、顺序和认证要求。
+- [x] Web/Electron 构建统一使用 `@nebula-studio-internal/vite`。
+- [x] API 基址和代理目标集中配置。
 
-```json
-{
-  "name": "@nebula-studio-renderer/tasks",
-  "version": "0.0.0",
-  "dependencies": {
-    "@nebula-studio/api-client": "workspace:^",
-    "@nebula-studio/auth-provider": "workspace:^",
-    "@nebula-studio/nebula-ui": "workspace:^",
-    "@nebula-studio/nebula-layout": "workspace:^",
-    "vue": "catalog:vue",
-    "vue-router": "catalog:vue"
-  }
-}
+### 3.2 认证与运行时
+
+- [x] 建立 `packages/core/auth-provider`。
+- [x] Integration、Settings、Login 和 Shell 接入统一 Session API。
+- [x] 建立 `packages/core/runtime` 的统一微应用启动入口。
+- [x] 建立 Shell Event Bus 和租户共享能力。
+
+### 3.3 Electron Preload
+
+- [x] 合并为统一 Preload 实现。
+- [x] auth、notify、settings、shell 拆分为 capability 工厂。
+- [x] Electron Vite 构建按窗口生成虚拟 Preload 入口。
+- [x] 不再为每个窗口维护完整且重复的 Preload 包。
+
+### 3.4 前后端契约基础
+
+- [x] 建立 SpringDoc → `openapi-typescript` 生成管道。
+- [x] 保存离线 `openapi.json` 和 `platform-api.ts`。
+- [x] API Client 支持 token、统一响应解析和未授权处理。
+- [x] 插件页面已覆盖分类、市场和 Connector 能力。
+- [x] DAG 编辑器可消费插件 Node Schema。
+
+---
+
+## 4. 当前主要问题
+
+### F1. 窗口配置仍不是完全单源（P0）
+
+`configs/windows.json` 已声明 `preloadCapabilities`，但
+`apps/electron-preload/src/config.ts` 仍维护一份 `PRELOAD_CONFIG`。新增窗口时仍可能出现
+窗口配置已生成、Preload 能力未同步的问题。
+
+此外，生成脚本目前主要输出 `_generated-windows.ts`。Web Embed 入口文件仍以
+`apps/web/src/embed/*-entry.ts` 形式存在，需要人工创建。
+
+目标：
+
+- Preload 能力直接从生成 manifest 获取。
+- 删除手写 `PRELOAD_CONFIG`。
+- 生成或校验 Web Embed 入口。
+- `generate:configs` 后工作树必须无差异。
+
+### F2. 生成契约未成为业务唯一类型源（P0）
+
+`packages/contracts/generated/platform-api.ts` 已存在，但业务模块仍大量使用
+`contracts/auth`、`contracts/system`、`contracts/integration` 下的手写 DTO。
+
+风险：
+
+- 后端字段变化不能在前端编译期完整暴露。
+- 手写契约与 OpenAPI 同时演进。
+- 插件 descriptor、生命周期状态和仓库 DTO 容易继续漂移。
+
+目标：
+
+1. 建立 generated type facade，禁止页面直接访问原始 OpenAPI 路径类型。
+2. 按 Auth → Plugin → Integration → System 顺序迁移。
+3. CI 执行 `generate:contracts` 后检查工作树差异。
+4. 手写 DTO 仅保留 UI ViewModel，不重复服务端传输结构。
+
+### F3. Integration 子应用职责过载（P1）
+
+Integration 当前同时包含：
+
+- 数据源和接口管理；
+- 服务发布、审批、版本、授权和治理；
+- 插件中心和插件市场；
+- 任务调度；
+- 订阅和 SSE；
+- Executor 路由、日志、统计和拓扑；
+- DAG/Flow 编排。
+
+短期不建议立即拆成多个独立子应用。应先提取可测试、可复用的 feature 包，降低
+Integration 内部耦合，再依据团队边界决定是否拆应用。
+
+首批提取顺序：
+
+1. `features/plugin-catalog`
+2. `features/subscription-manager`
+3. `features/service-release`
+4. `features/version-diff`
+
+提取条件：
+
+- feature 不依赖 Integration Router。
+- API、composable、mapper 和纯 UI 组件可独立测试。
+- 页面壳和路由仍留在 Integration。
+
+### F4. 插件 descriptor 前端模型需要同步（P1）
+
+后端插件体系已完成以下调整：
+
+- PF4J 引导信息由 JAR Manifest 提供。
+- `nebula-plugin.json` 是插件身份和治理信息来源。
+- `nebula-camel-plugin.json` 仅声明 Camel 领域能力。
+- Camel descriptor 的 `pluginId`、`displayName` 等字段从平台 descriptor 继承。
+- HTTP/MySQL/PostgreSQL 主插件类直接实现 Connector。
+
+前端需要：
+
+- 使用组合后的插件详情 DTO，不假设 Camel descriptor 自带身份字段。
+- 展示平台兼容性、权限、capabilities 和领域 descriptor。
+- 用 `configSchema` 生成 Connector 配置表单。
+- 用 `nodeSchema` 驱动 DAG Node Palette 和属性面板。
+- 区分插件安装状态、PF4J 运行状态和业务审批状态。
+
+### F5. Code Editor 仍不是完整工作区包（P1）
+
+`packages/editors/code-editor` 当前只有 Monaco Vue 文件和 README/tsconfig，缺少标准
+`package.json`、公共 `index.ts`、类型导出及独立测试。
+
+目标：
+
+- 补齐 workspace package 契约。
+- 从 `nebula-ui` 移出编辑器依赖。
+- 明确 Monaco 与 CodeMirror 的使用边界。
+- 编辑器包之间禁止相互依赖。
+
+### F6. E2E 仍以 Mock 和页面可达性为主（P0）
+
+现有 `critical-flow.spec.ts` 覆盖 Auth、Console、Executor、Gateway、SSE 和 Logout，
+但请求由 Playwright route mock 返回；`studio-flow`、`g5-smoke` 主要验证页面可达。
+
+真实验收至少需要：
+
+1. 启动 `platform-console :8090`。
+2. 启动 Camel Console/Executor `:8080/:8081`。
+3. 启动 Web Shell。
+4. 执行登录 → 租户 → 插件 → 订阅/SSE → Gateway → Monitor。
+5. 保存失败时的 trace、截图和后端日志。
+
+### F7. 文档与命名漂移（P2，已完成）
+
+2026-07-26 已完成不涉及运行时代码的文档收口：
+
+- [x] README 与架构注释统一描述基于 `unified.ts` 和 capability 的单一 Preload 架构。
+- [x] 仓库文档统一使用当前 `apps/sub-web` 目录，不再规划迁移到 `apps/renderers`。
+- [x] `electron-shared` 文档统一指向 `packages/core/electron-shared` 和当前
+  `@nebula-studio-electron/electron-bridge` 导出。
+- [x] 删除 Integration、Settings README 中的个人绝对路径。
+- [x] 为 Docs 子应用补充 README，并加入 Monorepo 应用索引。
+
+保留决策：暂不把 `apps/sub-web` 重命名为 `apps/renderers`。只有在构建工具、发布制品或团队
+所有权明确受阻时才进行目录迁移。
+
+---
+
+## 5. 目标架构
+
+目标不是再做一次目录大搬迁，而是在现有结构上形成稳定依赖方向。
+
+```text
+apps/*
+  └─ 仅负责进程入口、路由和页面组合
+
+packages/features/*
+  └─ 负责可复用业务能力
+      ├─ 可依赖 core/api-client、contracts、ui、editors
+      └─ 不依赖 apps/*
+
+packages/editors/*
+  └─ 负责编辑器能力
+      ├─ 可依赖 ui 基础包
+      └─ 编辑器之间不互相依赖
+
+packages/ui/*
+  └─ 负责展示组件，不访问业务 API
+
+packages/core/*
+  └─ 负责认证、运行时、Shell、租户、API Client、SSE
+
+packages/contracts/*
+  └─ 负责服务端传输契约和生成类型 facade
 ```
 
-**功能模块**：
+强制依赖方向：
 
-- 任务列表（分页、过滤、状态管理）
-- 任务编辑器（Cron 表达式生成器、依赖图可视化）
-- 执行日志（实时日志流、错误堆栈展示）
-- 集群节点分配（依赖 `nebula-cluster`）
-
-##### 5.2 Governance 子应用（对应 `nebula-governance`）
-
-**`apps/renderers/governance/package.json`**：
-
-```json
-{
-  "name": "@nebula-studio-renderer/governance",
-  "version": "0.0.0",
-  "dependencies": {
-    "@nebula-studio/api-client": "workspace:^",
-    "@nebula-studio/auth-provider": "workspace:^",
-    "@nebula-studio/nebula-ui": "workspace:^",
-    "@nebula-studio/nebula-flow-editor": "workspace:^",
-    "vue": "catalog:vue",
-    "vue-router": "catalog:vue"
-  }
-}
+```text
+apps → features → editors/ui → core/contracts
 ```
 
-**功能模块**：
+禁止：
 
-- 资源申请列表（创建、修改、删除、发布申请）
-- 审批工作台（待审批、已审批、审批历史）
-- BPMN 流程设计器（复用 `nebula-flow-editor`）
-- 审计日志查询（操作者、时间、内容、结果）
+- `core` 依赖 `features` 或 `apps`；
+- `ui` 访问后端 API；
+- feature 直接操作全局 Session Storage；
+- 页面重新声明后端 DTO；
+- Electron 与 Web 分别维护窗口或认证配置。
 
-##### 5.3 Release 子应用（对应 `nebula-release`）
+---
 
-**`apps/renderers/release/package.json`**：
+## 6. 分阶段实施计划
 
-```json
-{
-  "name": "@nebula-studio-renderer/release",
-  "version": "0.0.0",
-  "dependencies": {
-    "@nebula-studio/api-client": "workspace:^",
-    "@nebula-studio/auth-provider": "workspace:^",
-    "@nebula-studio/nebula-ui": "workspace:^",
-    "@nebula-studio/features/version-diff": "workspace:^",
-    "vue": "catalog:vue",
-    "vue-router": "catalog:vue"
-  }
-}
+### Phase 1：单源配置与契约硬化（P0，1 个迭代）
+
+- [ ] 从生成 manifest 构建 Preload capability map。
+- [ ] 删除 `electron-preload/src/config.ts` 中的手写映射。
+- [ ] 增加生成文件一致性检查。
+- [ ] 建立 generated contracts facade。
+- [ ] 迁移 Auth 和 Plugin API 类型。
+- [ ] CI 增加配置、契约生成差异检查。
+
+验收：
+
+```powershell
+vp run generate:configs
+vp run generate:contracts
+vp check
+git diff --exit-code
 ```
 
-**功能模块**：
+### Phase 2：插件与 Integration 边界收敛（P1，1–2 个迭代）
 
-- 发布流水线可视化（Draft → Version → Approval → Deploy）
-- 版本对比器（JSON Diff、Camel Route XML Diff）
-- 回滚管理（选择历史版本、一键回滚）
-- 部署目标管理（本地、K8s、远程集群）
+- [ ] 新建 `features/plugin-catalog`。
+- [ ] 统一平台 descriptor 与 Camel descriptor 的前端 ViewModel。
+- [ ] Connector 配置表单消费 `configSchema`。
+- [ ] DAG 节点消费 `nodeSchema`，删除重复静态映射。
+- [ ] 提取 `subscription-manager`。
+- [ ] 为 feature 增加 API/mapping/composable 单元测试。
 
-##### 5.4 Plugins 子应用（对应 `nebula-plugin`）
+验收：
 
-**`apps/renderers/plugins/package.json`**：
+- Integration 页面只负责路由和组合。
+- 插件详情不依赖 Camel descriptor 中重复的身份字段。
+- 内置 HTTP/MySQL/PostgreSQL 插件均能生成正确配置表单和 DAG 节点。
 
-```json
-{
-  "name": "@nebula-studio-renderer/plugins",
-  "version": "0.0.0",
-  "dependencies": {
-    "@nebula-studio/api-client": "workspace:^",
-    "@nebula-studio/auth-provider": "workspace:^",
-    "@nebula-studio/nebula-ui": "workspace:^",
-    "@nebula-studio/features/plugin-installer": "workspace:^",
-    "vue": "catalog:vue",
-    "vue-router": "catalog:vue"
-  }
-}
+### Phase 3：编辑器和 UI 依赖治理（P1，1 个迭代）
+
+- [ ] 补齐 `code-editor` package。
+- [ ] 把 CodeMirror/Monaco/TipTap 等编辑器依赖移出基础 UI 包。
+- [ ] 建立编辑器导出、类型检查、单测和 Bundle Budget。
+- [ ] 检查循环依赖和跨层引用。
+
+验收：
+
+- `nebula-ui` 不再承担代码/富文本编辑器实现。
+- 任一编辑器升级不会触发无关 feature 的强制改造。
+
+### Phase 4：真实全链路验收（P0，1 个迭代）
+
+- [ ] 保留 Mock E2E 作为快速回归。
+- [ ] 新增 real-stack Playwright project。
+- [ ] CI/本地脚本拉起 platform-console、Camel Console、Executor 和 Web。
+- [ ] 覆盖登录、租户、插件、订阅、Gateway、Monitor。
+- [ ] Electron 至少覆盖启动、认证恢复、Preload capability 和窗口切换。
+
+验收：
+
+- Mock E2E 与真实 E2E 分组运行。
+- 真实后端字段变化能在 contract generation 或 E2E 中失败。
+- 测试失败可定位到前端、Console 或 Executor。
+
+---
+
+## 7. 暂缓事项
+
+以下事项不作为当前重构前置条件：
+
+- 将 `apps/sub-web` 整体改名为 `apps/renderers`；
+- 立即拆出 Tasks/Governance/Release/Plugins 四个独立应用；
+- 一次性拆分全部 Integration 页面；
+- 为目录美观合并 `electron-shared` 与其他 core 包；
+- 在没有数据前承诺固定百分比的构建速度提升。
+
+独立子应用拆分触发条件：
+
+1. 有独立发布节奏；
+2. 有明确团队所有权；
+3. 需要独立权限或部署边界；
+4. Integration 首屏和构建体积无法通过懒加载解决；
+5. feature 已完成提取，不依赖 Integration 内部状态。
+
+---
+
+## 8. 质量关口
+
+每个阶段必须满足：
+
+- `vp check` 通过；
+- 受影响 workspace 单测通过；
+- `vp run build` 通过；
+- 生成脚本执行后无未提交差异；
+- 不新增手写服务端 DTO；
+- 不新增窗口/Preload 双源配置；
+- Web 与 Electron 共享同一能力定义；
+- 新 API 有 MSW 或单元测试；
+- 核心用户路径有 Playwright 覆盖；
+- 文档与实际目录一致。
+
+建议 CI：
+
+```text
+install
+  → generate:configs
+  → generate:contracts
+  → generated-diff-check
+  → vp check
+  → unit tests
+  → workspace build
+  → mock e2e
+  → real-stack e2e（合并或夜间关口）
 ```
 
-**功能模块**：
+---
 
-- 插件市场（本地仓库、远程 Maven 仓库搜索）
-- 插件详情（描述、版本、依赖、扩展点）
-- 在线安装/卸载/更新
-- 插件生命周期管理（启用、禁用、热加载）
+## 9. 成功指标
+
+| 指标 | 当前基线 | 目标 |
+| --- | --- | --- |
+| 窗口能力配置源 | JSON + Preload 手写映射 | 仅 `windows.json` |
+| PF4J/Camel 插件身份解析 | 页面可能按单 descriptor 假设 | 使用组合 ViewModel |
+| 生成契约业务采用率 | 较低 | 新增 API 100%，存量分批迁移 |
+| 正式 feature 包 | 1 个 | 首批 3–4 个真实复用包 |
+| Integration 职责 | 页面、API、mapper、feature 混合 | 页面组合与 feature 分离 |
+| Code Editor | 非完整 workspace 包 | 可独立构建、测试、发布 |
+| Playwright | 3 个冒烟 spec，主要 Mock | Mock 回归 + 真实全链路 |
+| Preload 实现 | 已统一，配置仍有双源 | 实现和配置均单源 |
 
 ---
 
-## 5. 实施步骤
+## 10. 风险与缓解
 
-### 阶段一：基础设施重构（2 周）
-
-**Week 1**：
-
-1. 创建 `configs/` 目录，定义 `windows.json` schema（含 `preloadCapabilities` 声明）
-2. 实现配置生成脚本（TypeScript + JSON Schema 验证）
-3. 迁移 `packages/app-shell` → `packages/core/app-shell`
-4. 合并 `packages/electron-shared` + `packages/electron-shared-vue` → `packages/core/electron-bridge`
-
-**Week 2**：
-
-1. 创建 `packages/core/auth-provider`
-2. **重构 `apps/electron-preload` 为统一 Preload 生成器**：
-   - 创建 `capabilities/` 目录，拆分 auth、notify、settings 能力模块
-   - 实现 `config.ts` 根据窗口配置动态生成 API
-   - 删除旧的 `main/`、`docs/`、`settings/` 三个独立包
-   - 更新 `apps/electron/electron.vite.config.ts` 的 Preload 构建配置
-3. 重构 `apps/renderers/shell`（原 `sub-web/frontend`）使用新 AuthProvider
-4. 统一所有子应用的 `boot.ts` 入口
-5. 更新 `apps/web` 和 `apps/electron` 的启动逻辑
-
-### 阶段二：Packages 重组（2 周）
-
-**Week 3**：
-
-1. 创建 `packages/ui/`、`packages/editors/`、`packages/features/` 目录
-2. 迁移现有 packages 到新结构
-3. 拆分 `nebula-ui` 为细粒度组件包（可选，视复杂度决定）
-4. 更新所有子应用的依赖引用
-
-**Week 4**：
-
-1. 创建 `packages/features/subscription-manager`
-2. 创建 `packages/features/route-designer`
-3. 创建 `packages/features/plugin-installer`
-4. 创建 `packages/features/version-diff`
-5. 更新 `integration` 子应用使用新的 features 包
-
-### 阶段三：新增子应用开发（4 周）
-
-**Week 5-6**：Tasks 子应用
-
-- 任务列表、编辑器、执行日志
-- 对接后端 `nebula-task` API
-
-**Week 7-8**：Governance 子应用
-
-- 资源申请、审批工作台、BPMN 设计器
-- 对接后端 `nebula-governance` API
-
-**Week 9-10**：Release 子应用
-
-- 发布流水线、版本对比、回滚管理
-- 对接后端 `nebula-release` API
-
-**Week 11-12**：Plugins 子应用
-
-- 插件市场、在线安装、生命周期管理
-- 对接后端 `nebula-plugin` API
-
-### 阶段四：测试与优化（2 周）
-
-**Week 13**：
-
-1. 端到端测试（Web + Electron 双模式）
-2. 性能优化（代码分割、懒加载、Tree Shaking）
-3. 修复 code-review-graph 检测到的 Hub Nodes 和 Bridge Nodes 问题
-
-**Week 14**：
-
-1. 文档更新（README、架构说明、子应用开发指南）
-2. CI/CD 流程调整（适配新目录结构）
-3. 灰度发布与监控
+| 风险 | 影响 | 缓解 |
+| --- | --- | --- |
+| 删除 Preload 手写映射导致窗口能力缺失 | Electron API 不可用 | 生成期 Schema 校验 + capability 测试 |
+| OpenAPI 类型直接泄漏到页面 | 页面类型复杂、迁移成本高 | generated facade + ViewModel mapper |
+| 过早拆分 Integration | 路由、状态和交付节奏更复杂 | 先提取 feature，再决定拆应用 |
+| 插件 descriptor 新旧格式并存 | 市场详情或 DAG 节点缺字段 | 后端组合 DTO + 前端兼容 mapper |
+| 真实 E2E 环境不稳定 | CI 偶发失败 | Mock 快速关口 + real-stack 独立重试和日志 |
+| 编辑器依赖拆分导致包体重复 | 构建产物增大 | manual chunks + bundle budget |
 
 ---
 
-## 6. 风险评估与缓解
+## 11. 近期执行顺序
 
-### 6.1 高风险项
+1. 完成 F1：Preload capability 单源化。
+2. 完成 F2：Auth/Plugin 生成契约迁移。
+3. 完成 F4：插件组合 ViewModel 与 Schema 驱动 UI。
+4. 提取 `plugin-catalog` 和 `subscription-manager`。
+5. 补齐 `code-editor` 包。
+6. 建立真实后端 Playwright 关口。
 
-| 风险                              | 影响                      | 缓解措施                                                                |
-| --------------------------------- | ------------------------- | ----------------------------------------------------------------------- |
-| 配置生成脚本 bug 导致构建失败     | 阻塞所有子应用开发        | 编写单元测试覆盖 JSON Schema 验证；提供手动回退机制                     |
-| AuthProvider 迁移导致认证中断     | 用户无法登录              | 并行运行旧认证逻辑与新 AuthProvider，逐步切换                           |
-| **Preload 统一后 IPC 通道不匹配** | **Electron 窗口通信失败** | **保留旧 Preload 包作为 fallback；编写集成测试覆盖所有窗口的 IPC 调用** |
-| Packages 依赖调整引发循环依赖     | 构建失败或运行时错误      | 使用`madge` 工具检测循环依赖；分批次迁移                                |
-| 新增子应用与后端 API 不匹配       | 功能不可用                | 前后端同步开发，每周对齐 API 契约                                       |
-
-### 6.2 中风险项
-
-| 风险                            | 影响             | 缓解措施                                        |
-| ------------------------------- | ---------------- | ----------------------------------------------- |
-| Electron 窗口管理与新配置不兼容 | 桌面端崩溃       | 保留旧`app.config.ts` 作为 fallback，逐步迁移   |
-| Vite 别名映射错误导致模块找不到 | 开发环境无法启动 | 提供`pnpm run check:aliases` 脚本验证别名有效性 |
-| 子应用间共享状态冲突            | 数据不一致       | 严格遵循 AuthProvider 单一事实来源原则          |
-
----
-
-## 7. 成功指标
-
-### 7.1 技术指标
-
-- **新增子应用时间**：从 4 小时缩减至 30 分钟（仅需编辑 `windows.json` + 创建目录，**无需创建 Preload 包**）
-- **构建速度**：全量构建时间减少 30%（通过依赖优化和代码分割）
-- **Preload 包数量**：从 3 个独立包合并为 1 个统一 Preload，**代码重复率降低 70%**
-- **Hub Nodes 数量**：Top 10 Hub Nodes 的平均度数降低 50%
-- **Bridge Nodes 中的测试代码**：降至 0（生产代码与测试代码分离）
-
-### 7.2 业务指标
-
-- **后端模块覆盖率**：从 40% 提升至 90%（新增 Tasks、Governance、Release、Plugins）
-- **用户任务完成时间**：资源发布流程从 5 步缩减至 3 步（可视化流水线）
-- **插件安装成功率**：从手动上传 JAR 提升至在线一键安装（成功率 > 95%）
-
----
-
-## 8. 附录
-
-### 8.1 关键依赖清单
-
-| 包名            | 版本   | 用途            |
-| --------------- | ------ | --------------- |
-| Vue             | 3.5.35 | 前端框架        |
-| Vue Router      | 4.6.4  | 路由管理        |
-| Vite            | 8.0.10 | 构建工具        |
-| Electron        | 42.3.1 | 桌面容器        |
-| @vue-flow/core  | 1.41.2 | DAG 流程图      |
-| bpmn-js         | 18.0.0 | BPMN 流程编辑器 |
-| Monaco Editor   | 0.55.1 | 代码编辑器      |
-| VxeTable        | 4.19.6 | 数据表格        |
-| CodeMirror 6    | 6.x    | 富文本编辑器    |
-| WangEditor Next | 5.7.7  | Markdown 编辑器 |
-
-### 8.2 参考资源
-
-- [Nebula 后端模块规划](./模块规划.md)
-- [Code Review Graph 工具文档](https://github.com/code-review-graph/docs)
-- [Electron + Vite 最佳实践](https://electron-vite.org/)
-- [Monorepo 管理指南](https://pnpm.io/workspaces)
-
----
-
-**文档版本**：v1.0
-**最后更新**：2026-06-25
-**作者**：AI Assistant（基于 code-review-graph 分析与人工审查）
+该顺序与后端当前重点一致：插件平台主链路和 Camel Connector 已完成结构收敛，前端应先
+消费稳定 descriptor 与运行时契约，再扩展更多独立子应用。
