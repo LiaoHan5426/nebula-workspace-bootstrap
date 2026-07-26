@@ -511,20 +511,29 @@ vp check
 vp run --filter @nebula-studio/electron build
 ```
 
-### Phase 2：全局体验基线与多界面骨架（P0，1–2 个迭代）
+### Phase 2：全局体验基线与多界面骨架（P0，已完成）
 
-- [ ] 访谈或走查资源消费者、提供方、管理员三类角色，形成任务清单与权限矩阵。
-- [ ] 为 Shell、Integration、Settings、Login、Docs 建立页面清单、任务归属和体验债务基线。
-- [ ] 盘点现有路由，建立 Portal / Provider / Admin 路由元数据，不再通过路径名单推断界面。
-- [ ] 为 `nebula-layout` 建立 Auth、Shell、Portal、Provider、Admin、Settings、Docs 布局边界。
-- [ ] 定义排版层级、间距、圆角、阴影、内容宽度、交互状态和响应式断点等语义 token。
-- [ ] 定义 comfortable / compact density，禁止页面自行维护密度、标题和内容宽度常量。
-- [ ] 补齐 `PageHeader`、`SearchHero`、`FilterBar`、`ResourceCard`、`EmptyState`、
+- [x] 走查资源消费者、提供方、管理员三类角色，形成任务清单、权限矩阵和待访谈问题。
+- [x] 为 Shell、Integration、Settings、Login、Docs 建立页面清单、任务归属和体验债务基线。
+- [x] 盘点现有路由，建立 Portal / Provider / Admin 路由元数据，不再通过路径名单推断界面。
+- [x] 为 `nebula-layout` 建立 Auth、Shell、Portal、Provider、Admin、Settings、Docs 布局边界。
+- [x] 定义排版层级、间距、圆角、阴影、内容宽度、交互状态和响应式断点等语义 token。
+- [x] 定义 comfortable / compact density，禁止页面自行维护密度、标题和内容宽度常量。
+- [x] 补齐 `PageHeader`、`SearchHero`、`FilterBar`、`ResourceCard`、`EmptyState`、
   `StatusTimeline`、`StepFlow`、`DetailSection` 等无业务基础模式。
-- [ ] 建立组件状态样例，覆盖 loading、empty、error、disabled、partial-data 和 skeleton。
-- [ ] 统一图标、术语、日期、状态、错误文案和危险操作规范，删除页面中的文字图标和中英文漂移。
-- [ ] 确定视觉回归与可访问性工具，为六类目标界面建立基准截图。
-- [ ] 输出低保真线框与可点击原型，在实现资源 API 前确认信息层级和关键文案。
+- [x] 建立组件状态样例，覆盖 loading、empty、error、disabled、partial-data 和 skeleton。
+- [x] 统一图标、术语、日期、状态、错误文案和危险操作规范，删除页面中的文字图标和中英文漂移。
+- [x] 使用 Playwright 建立视觉回归与可访问性基线，为六类目标界面生成基准截图。
+- [x] 输出低保真线框与 Docs 可点击原型，在实现资源 API 前固化信息层级和关键文案假设。
+
+完成说明（2026-07-26）：
+
+- 实现与角色走查基线见 `nebula-studio/docs/frontend-experience-baseline.md`；真实用户访谈仍作为
+  Phase 4 首个资源门户纵向切片前的需求校准项，不将当前假设视为用户验证结论。
+- Docs 的 `/patterns/experience-baseline` 可交互展示完整、骨架加载、空、错误、无权限、
+  部分数据和禁用状态。
+- `e2e/experience-baseline.spec.ts` 覆盖 Shell、Login、Portal、Admin、Settings、Docs，
+  并保存亮暗主题 × 320/768/1280/1440 px 的 48 张截图。
 
 验收：
 
@@ -801,7 +810,7 @@ install
 
 1. [x] 完成 F1：Preload capability 单源化。
 2. [x] 完成 F2：Auth/Plugin 生成契约迁移。
-3. [ ] 执行 Phase 2：全应用页面清单、角色任务、布局契约、token 和设计模式基线。
+3. [x] 执行 Phase 2：全应用页面清单、角色任务、布局契约、token 和设计模式基线。
 4. [ ] 交付 Shell 个人工作台、全局搜索骨架和分类错误恢复界面。
 5. [ ] 将 Login 收敛到 AuthFlow 状态机，补齐多端和失败状态。
 6. [ ] 以 API/库表/Connector 为首批资源，交付 `/catalog` 目录和统一详情页。
