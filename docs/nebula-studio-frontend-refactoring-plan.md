@@ -685,12 +685,17 @@ Integration 已建立 `/provider/*`、`/manage/*` 与角色工作台，Settings 
 - 首次使用引导不遮挡核心操作、不强制观看，并可在帮助中心重新启动。
 - 文档中的代码示例和组件示例随 CI 构建。
 
-### Phase 7：编辑器和 UI 依赖治理（P1，1 个迭代）
+### Phase 7：编辑器和 UI 依赖治理（P1，已完成）
 
-- [ ] 补齐 `code-editor` package。
-- [ ] 把 CodeMirror/Monaco/TipTap 等编辑器依赖移出基础 UI 包。
-- [ ] 建立编辑器导出、类型检查、单测和 Bundle Budget。
-- [ ] 检查循环依赖和跨层引用。
+2026-07-26 已确认并落实“基础 UI → provider-neutral 编辑器外壳 → 异步 Provider →
+业务应用”的单向依赖模式，详细决策见 `nebula-studio/docs/editor-package-architecture.md`。
+Monaco 作为 `code-editor` 的默认异步 Provider；未来 CodeMirror 使用并列适配器，TipTap
+因文档模型不同进入独立富文本编辑器包，不与代码编辑器共享主入口。
+
+- [x] 补齐 `code-editor` package。
+- [x] 把 CodeMirror/Monaco/TipTap 等编辑器依赖移出基础 UI 包。
+- [x] 建立编辑器导出、类型检查、单测和 Bundle Budget。
+- [x] 检查循环依赖和跨层引用。
 
 验收：
 
