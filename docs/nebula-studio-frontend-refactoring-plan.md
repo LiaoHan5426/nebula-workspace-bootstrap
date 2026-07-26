@@ -702,16 +702,16 @@ Monaco 作为 `code-editor` 的默认异步 Provider；未来 CodeMirror 使用�
 - `nebula-ui` 不再承担代码/富文本编辑器实现。
 - 任一编辑器升级不会触发无关 feature 的强制改造。
 
-### Phase 8：真实全链路与体验验收（P0，1 个迭代）
+### Phase 8：真实全链路与体验验收（P0，验收基础设施已完成）
 
-- [ ] 保留 Mock E2E 作为快速回归。
-- [ ] 新增 real-stack Playwright project。
-- [ ] CI/本地脚本拉起 platform-console、Camel Console、Executor 和 Web。
-- [ ] 覆盖登录、个人工作台、全局搜索、资源申请、Settings 权限、上下文帮助、
+- [x] 保留 Mock E2E 作为快速回归。
+- [x] 新增 real-stack Playwright project。
+- [x] CI/本地脚本拉起 platform-console、Camel Console、Executor 和 Web。
+- [x] 覆盖登录、个人工作台、全局搜索、资源申请、Settings 权限、上下文帮助、
   插件、订阅、Gateway 和 Monitor。
-- [ ] Electron 至少覆盖启动、认证恢复、Preload capability 和窗口切换。
-- [ ] 增加 Shell/Login/Portal/Admin/Settings/Docs 视觉回归、键盘导航、焦点管理和主题切换测试。
-- [ ] 对资源目录和详情建立首屏性能预算，记录 Web 与 Electron 的真实基线。
+- [x] Electron 至少覆盖启动、认证恢复、Preload capability 和窗口切换。
+- [x] 增加 Shell/Login/Portal/Admin/Settings/Docs 视觉回归、键盘导航、焦点管理和主题切换测试。
+- [x] 对资源目录和详情建立首屏性能预算，记录 Web 与 Electron 的真实基线。
 
 验收：
 
@@ -720,6 +720,22 @@ Monaco 作为 `code-editor` 的默认异步 Provider；未来 CodeMirror 使用�
 - 测试失败可定位到前端、Console 或 Executor。
 - 六类关键界面在亮色、暗色、Web、Electron 和窄屏下均有可比较截图。
 - 核心用户旅程没有仅靠颜色传达状态，也没有不可见的键盘焦点。
+
+实现结果（2026-07-26）：
+
+- Playwright 已拆分为 `mock-regression`、`experience`、`real-stack` 和
+  `electron` 四个 project；Mock 12 项、体验 10 项和 Electron 1 项本地通过。
+- Shell/Login/Portal/Admin/Settings/Docs 已建立亮暗主题与
+  320/768/1280/1440 px 共 48 张 Windows 视觉基线；Electron 已建立 Portal
+  亮暗主题基线，并记录启动与目录首屏性能附件。
+- real-stack 脚本会先构建所需后端 reactor，按服务保存日志、检测进程提前退出，
+  再执行在线契约生成与差异检查；CI 使用 Windows runner 执行视觉、Electron
+  和定时/手动真实栈验收。
+- 当前工作区的真实栈最终验收仍被后端启动状态阻塞：
+  `platform-console` 在创建 `ConfigRestController` 时缺少
+  `ConfigService` Bean。该失败已由
+  `test-results/real-stack/platform-console.log` 精确定位；修复后端 Bean
+  装配后重新运行 `vp run test:e2e:real` 即可继续契约与 UI 全链路验收。
 
 ---
 
