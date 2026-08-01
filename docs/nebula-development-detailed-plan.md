@@ -77,13 +77,13 @@ W0/G0 已于 2026-08-01 完成。W1 与 W2 现在可并行；W3 与 W4 可按契
 G0 已通过：
 
 - Java 25.0.1、Maven 3.9.16 下，三个正式应用及其 143 个 Reactor 模块定向构建成功；
-- 配置、响应转换器、集群接管、租约围栏、安全配置、OpenAPI 与三个 ApplicationContext 共 27 项目标测试通过；
+- 配置、响应转换器、集群接管、租约围栏、安全配置、OpenAPI 与三个 ApplicationContext 共 29 项目标测试通过；
 - `platform-console`、`platform-integration`、`platform-integration-executor` 分别在 8090、8080、8081 启动并通过健康检查；
 - 8090 在线 OpenAPI 返回 3.1.0、132 条路径，生成快照与 TypeScript 契约已刷新且幂等检查通过；
-- 在线 OpenAPI 按 token/session/oauth 运行模式声明对应认证方案，仅把启动期静态公开路径标记为公开；动态数据库规则采用保守的“仍标记受保护”文档策略；
+- 在线 OpenAPI 按 token 或会话型 session/oauth 登录模式声明对应认证方案，仅把启动期静态公开路径标记为公开；动态数据库规则采用保守的“仍标记受保护”文档策略；
 - 数据库监控端点不再公开，所有操作均要求 `ADMIN` 角色；真实栈验证未认证访问返回 401；
-- 集群接管先以观测到的心跳原子切换到 `RECLAIMING`，心跳和任务/订阅租约获取通过节点行锁围栏，全部租约域回收成功后才转为 `OFFLINE`；
-- `vp run test:e2e:real` 从停止状态自行构建、启动三个正式应用并通过 1 项 real-stack 测试，结束后只关闭本次启动且所有权可验证的临时服务；
+- 集群接管先以观测到的心跳原子切换到 `RECLAIMING`，心跳、普通状态转换和任务/订阅租约获取均被围栏，全部租约域回收成功后才转为 `OFFLINE`；
+- `vp run test:e2e:real` 从停止状态自行构建、启动三个正式应用并通过 1 项 real-stack 测试；3 项 Pester 用例覆盖复用服务与失败启动，结束后整树关闭本次启动且所有权可验证的临时服务；
 - Web production build 通过；本地 RustFS S3 API 的 9000 健康检查返回 200。
 
 G0 修复同时消除了动态注册 `JdbcTemplate` 时 JDBC ConfigRepository 条件过早求值、非 JSON 响应被统一响应 Advice 错误包装、集群 JDBC 事务跨入 JPA 租约回收导致资源重复绑定、恢复节点与接管扫描竞态、监控端点公开及 real-stack 误杀复用服务等问题。明文凭据迁移和轮换仍是安全治理项，不因本地 G0 通过而视为完成。
