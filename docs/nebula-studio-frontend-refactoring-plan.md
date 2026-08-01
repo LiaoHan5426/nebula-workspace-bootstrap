@@ -1,873 +1,362 @@
 # Nebula Studio 前端架构现状与增量重构计划
 
-> 文档版本：v2.2
->
-> 最后更新：2026-07-26
->
-> 代码基线：`F:\nebula-workspace\nebula-studio`
->
-> 关联文档：[Nebula 当前状态分析](./nebula-current-state-analysis.md)、[Nebula 详细开发规划](./nebula-development-detailed-plan.md)
+> 文档版本：v3.0
+> 最后更新：2026-08-01
+> 代码基线：`nebula-studio@5a36a7e09787889607d53ddea65b3e25b98b5397`
+> 本文只描述当前代码和剩余增量工作；已完成的历史阶段不再作为待办重复保留。
 
-## 1. 文档目的
+## 1. 当前结论
 
-本文基于当前 `nebula-studio` 代码重新校准前端重构计划。旧版方案形成于
-2026-06-25，其中多项“目标能力”已经落地，部分目录迁移建议也已失去必要性。
+Nebula Studio 已完成宿主、窗口配置、preload、认证、运行时、基础布局、主要产品界面和测试分组的基础重构。下一阶段不需要再次搬迁目录，而应集中解决：
 
-本次修订遵循以下原则：
+1. 真实后端栈尚未通过；
+2. generated contracts 业务采用不完整；
+3. Integration 的 feature 主要仍是应用内边界；
+4. MFA/恢复只有前端状态容器，后端契约未实现；
+5. Settings 存量实体页面和跨应用真实数据仍需收口。
 
-1. 以当前代码为事实来源，不沿用旧路径和旧完成度。
-2. 保留已经稳定的 `apps/sub-web/*` 结构，不进行纯命名型大迁移。
-3. 优先消除真实重复源、契约漂移和运行时分叉。
-4. 新增业务能力前先完成共享层和验收边界。
-5. Web 与 Electron 必须复用同一份窗口、认证和 API 契约。
-6. 用户门户按用户任务设计，管理后台按治理职责设计，不用同一套信息架构兼顾两类场景。
+## 2. 技术与工作区基线
 
----
-
-## 2. 当前架构基线
-
-### 2.1 仓库结构
-
-```text
-nebula-studio/
-├── apps/
-│   ├── electron/                 # Electron 主进程和 renderer 构建入口
-│   ├── electron-preload/src/     # 统一 Preload 实现
-│   ├── web/                      # Web Shell
-│   └── sub-web/
-│       ├── frontend/             # Shell 主界面
-│       ├── integration/          # 集成、插件、任务、治理、监控
-│       ├── settings/             # 用户、组织、权限、配置
-│       ├── login/                # 登录
-│       └── docs/                 # UI/使用文档
-├── configs/
-│   ├── windows.json              # 窗口、Renderer、API 基址单源配置
-│   └── windows.schema.json       # 配置 Schema
-├── packages/
-│   ├── contracts/                # 手写契约 + OpenAPI 生成结果
-│   ├── core/
-│   │   ├── api-client/
-│   │   ├── app-shell/
-│   │   ├── auth/
-│   │   ├── auth-provider/
-│   │   ├── electron-shared/
-│   │   ├── msw/
-│   │   ├── runtime/
-│   │   ├── shell/
-│   │   ├── sse-events/
-│   │   └── tenant/
-│   ├── ui/
-│   ├── editors/
-│   └── features/
-│       └── use-confirm/
-├── internal/vite/                # Vite+/Electron/Vite 配置封装
-├── scripts/
-│   ├── generate-window-configs.mjs
-│   └── generate-contracts.mjs
-└── e2e/                          # Playwright 冒烟与关键路径测试
-```
-
-### 2.2 当前运行模型
-
-```mermaid
-flowchart LR
-  C["configs/windows.json"] --> G["generate-window-configs.mjs"]
-  G --> M["app-shell/_generated-windows.ts"]
-  M --> W["Web Shell"]
-  M --> E["Electron"]
-  M --> S["Shell integratedApps catalog"]
-
-  E --> P["统一 Preload"]
-  P --> A["auth capability"]
-  P --> N["notify capability"]
-  P --> T["settings capability"]
-  P --> H["shell capability"]
-
-  W --> R["sub-web renderers"]
-  E --> R
-  R --> AP["AuthProvider / API Client"]
-  AP --> B1["platform-console :8090"]
-  AP --> B2["camel-console :8080"]
-  AP --> B3["executor :8081"]
-```
-
-### 2.3 完成度矩阵
-
-| 能力 | 当前状态 | 代码事实 | 结论 |
-| --- | --- | --- | --- |
-| 窗口配置集中化 | 基本完成 | `configs/windows.json` + JSON Schema + 生成脚本 | 保留并继续收口 |
-| App Shell 分层 | 已完成 | `core/app-shell` 与 `core/shell` 已拆分 | 不再迁移目录 |
-| 统一认证 | 已完成 | `auth-provider` 为 Session 单一写入入口 | 后续补跨应用一致性测试 |
-| 统一 Preload | 已完成 | manifest capability map + `unified.ts` + capability 工厂 | 保持单源 |
-| Web/Electron 配置复用 | 已完成 | 两端均消费内部 Vite manifest/config | Embed 入口继续执行存在性校验 |
-| API Client | 已完成基础层 | `core/api-client` 已有鉴权、响应解析和测试 | 需全面消费生成契约 |
-| OpenAPI 生成 | Phase 1 完成 | generated facade + Auth/Plugin 域迁移 | 继续迁移 Integration/System |
-| Integration 功能 | 功能较全但过载 | 插件、任务、服务治理、订阅、监控集中于单应用 | 需要按 feature 边界拆分 |
-| Features 共享包 | 未按旧计划落地 | 当前仅 `use-confirm` 为正式 feature 包 | 按真实复用需求提取 |
-| 编辑器边界 | 已完成 | `code-editor` 已具备异步 Provider、导出、单测和 Bundle Budget；编辑器依赖已移出基础 UI | 保持 Provider 并列和单向依赖 |
-| 插件前端 | 基本可用 | 插件分类、市场、Connector、DAG Node Schema 已接入 | 需适配新版 descriptor 契约 |
-| Shell 体验 | Phase 3 完成 | 个人工作台、全局搜索、最近访问、任务入口和分类恢复状态已落地 | 接入更多真实摘要数据 |
-| Integration 体验 | Phase 4 完成 | 资源门户与管理中心分层，具备目录、详情、申请、进度和我的资源 | 扩展真实资源类型与后端数据 |
-| Settings 体验 | Phase 5 完成主体 | 已拆分个人、组织、平台入口并完成权限矩阵、配置与审计现代化 | 继续统一剩余实体列表页 |
-| Login 体验 | Phase 3 完成前端状态 | AuthFlow 已覆盖账号、组织、MFA、恢复和分类错误 | 等待后端 MFA/恢复契约 |
-| Docs 体验 | Phase 6 完成 | 产品帮助、开发者参考、全文搜索、help key 和首次任务引导已落地 | 随功能持续维护内容 |
-| E2E | 关口已建立 | 4 个 Playwright project、24 项测试；Mock/体验/Electron 本地通过 | 修复后端 Bean 装配后通过 real-stack |
-
----
-
-## 3. 已完成事项
-
-以下内容从后续重构范围中移除，避免重复建设。
-
-### 3.1 配置与 Shell
-
-- [x] 建立 `configs/windows.json` 和 `windows.schema.json`。
-- [x] 生成 `packages/core/app-shell/src/common/_generated-windows.ts`。
-- [x] Shell 集成目录从生成配置读取 label、icon、顺序和认证要求。
-- [x] Web/Electron 构建统一使用 `@nebula-studio-internal/vite`。
-- [x] API 基址和代理目标集中配置。
-
-### 3.2 认证与运行时
-
-- [x] 建立 `packages/core/auth-provider`。
-- [x] Integration、Settings、Login 和 Shell 接入统一 Session API。
-- [x] 建立 `packages/core/runtime` 的统一微应用启动入口。
-- [x] 建立 Shell Event Bus 和租户共享能力。
-
-### 3.3 Electron Preload
-
-- [x] 合并为统一 Preload 实现。
-- [x] auth、notify、settings、shell 拆分为 capability 工厂。
-- [x] Electron Vite 构建按窗口生成虚拟 Preload 入口。
-- [x] 不再为每个窗口维护完整且重复的 Preload 包。
-
-### 3.4 前后端契约基础
-
-- [x] 建立 SpringDoc → `openapi-typescript` 生成管道。
-- [x] 保存离线 `openapi.json` 和 `platform-api.ts`。
-- [x] API Client 支持 token、统一响应解析和未授权处理。
-- [x] 插件页面已覆盖分类、市场和 Connector 能力。
-- [x] DAG 编辑器可消费插件 Node Schema。
-
----
-
-## 4. 当前主要问题
-
-### F1. 窗口配置单源（P0，已完成）
-
-2026-07-26 已完成：
-
-- manifest 从 `configs/windows.json` 聚合 `preloadCapabilities`；
-- 复用同一 preload ID 的窗口自动取能力并集；
-- 虚拟 Preload 入口在构建期注入能力，不再运行时查手写映射；
-- 删除 `apps/electron-preload/src/config.ts`；
-- manifest 构建继续校验每个 Web Embed、renderer `main.ts` 和 `boot.ts` 是否存在；
-- `check:generated` 对窗口生成结果执行幂等性检查。
-
-### F2. 生成契约采用率不足（P0，Phase 1 已完成）
-
-`packages/contracts/generated/platform-api.ts` 已存在，但业务模块仍大量使用
-`contracts/auth`、`contracts/system`、`contracts/integration` 下的手写 DTO。
-
-风险：
-
-- 后端字段变化不能在前端编译期完整暴露。
-- 手写契约与 OpenAPI 同时演进。
-- 插件 descriptor、生命周期状态和仓库 DTO 容易继续漂移。
-
-Phase 1 已完成 generated facade、Auth 和 Plugin API 类型迁移，并在 CI 中加入契约生成
-一致性检查。业务代码不再直接访问 `generated/platform-api.ts`。
-
-当前 Platform OpenAPI 快照尚未包含 Auth 与 Camel Plugin schema，因此 facade 暂时组合
-OpenAPI 生成类型和基于后端 DTO 的兼容域契约。待对应服务输出完整 schema 后，只替换 facade
-内部来源，不改变业务导入路径。Integration 与 System 的剩余 DTO 迁移继续按增量方式进行。
-
-### F3. Integration 子应用职责过载（P1）
-
-Integration 当前同时包含：
-
-- 数据源和接口管理；
-- 服务发布、审批、版本、授权和治理；
-- 插件中心和插件市场；
-- 任务调度；
-- 订阅和 SSE；
-- Executor 路由、日志、统计和拓扑；
-- DAG/Flow 编排。
-
-短期不建议立即拆成多个独立子应用。应先提取可测试、可复用的 feature 包，降低
-Integration 内部耦合，再依据团队边界决定是否拆应用。
-
-首批提取顺序：
-
-1. `features/plugin-catalog`
-2. `features/subscription-manager`
-3. `features/service-release`
-4. `features/version-diff`
-
-提取条件：
-
-- feature 不依赖 Integration Router。
-- API、composable、mapper 和纯 UI 组件可独立测试。
-- 页面壳和路由仍留在 Integration。
-
-### F4. 插件 descriptor 前端模型需要同步（P1）
-
-后端插件体系已完成以下调整：
-
-- PF4J 引导信息由 JAR Manifest 提供。
-- `nebula-plugin.json` 是插件身份和治理信息来源。
-- `nebula-camel-plugin.json` 仅声明 Camel 领域能力。
-- Camel descriptor 的 `pluginId`、`displayName` 等字段从平台 descriptor 继承。
-- HTTP/MySQL/PostgreSQL 主插件类直接实现 Connector。
-
-前端需要：
-
-- 使用组合后的插件详情 DTO，不假设 Camel descriptor 自带身份字段。
-- 展示平台兼容性、权限、capabilities 和领域 descriptor。
-- 用 `configSchema` 生成 Connector 配置表单。
-- 用 `nodeSchema` 驱动 DAG Node Palette 和属性面板。
-- 区分插件安装状态、PF4J 运行状态和业务审批状态。
-
-### F5. Code Editor 工作区边界（P1，已完成）
-
-`packages/editors/code-editor` 已具备标准 `package.json`、公共入口、类型导出、
-异步 Monaco Provider、独立测试和 Bundle Budget。编辑器依赖已经移出
-`nebula-ui`。
-
-已确定的长期模式：
-
-- 基础 UI 仅提供通用 primitive，不承载编辑器实现。
-- code-editor 暴露 provider-neutral 外壳，Monaco/CodeMirror 作为并列异步 Provider。
-- TipTap 属于独立富文本模型，不并入代码编辑器主入口。
-- 编辑器包之间以及编辑器到业务 feature 保持单向依赖。
-
-### F6. E2E 真实栈关口（P0，基础设施已完成）
-
-Mock 快速回归仍保留；同时已新增无网络 Mock 的 `real-stack` project、后端 reactor
-构建与三服务启动脚本、在线契约差异检查、分域日志以及 CI 手动/定时关口。
-体验 project 覆盖六类界面视觉、窄屏、亮暗主题、键盘焦点和性能预算，Electron
-project 覆盖启动、认证恢复、Preload capability 和窗口切换。
-
-当前真实验收状态：
-
-1. 后端 reactor 构建成功，PostgreSQL 可连接。
-2. `platform-console :8090` 在创建 `ConfigRestController` 时因缺少
-   `ConfigService` Bean 退出。
-3. 脚本已能检测进程提前退出，并将日志写入 `test-results/real-stack`。
-4. 修复后端装配后，重新运行 `vp run test:e2e:real`，继续验证登录 → 插件 →
-   订阅/SSE → Gateway → Monitor 和在线契约。
-
-### F7. 文档与命名漂移（P2，已完成）
-
-2026-07-26 已完成不涉及运行时代码的文档收口：
-
-- [x] README 与架构注释统一描述基于 `unified.ts` 和 capability 的单一 Preload 架构。
-- [x] 仓库文档统一使用当前 `apps/sub-web` 目录，不再规划迁移到 `apps/renderers`。
-- [x] `electron-shared` 文档统一指向 `packages/core/electron-shared` 和当前
-  `@nebula-studio-electron/electron-bridge` 导出。
-- [x] 删除 Integration、Settings README 中的个人绝对路径。
-- [x] 为 Docs 子应用补充 README，并加入 Monorepo 应用索引。
-
-保留决策：暂不把 `apps/sub-web` 重命名为 `apps/renderers`。只有在构建工具、发布制品或团队
-所有权明确受阻时才进行目录迁移。
-
-### F8. Integration 信息架构与用户体验错位（P0）
-
-当前 Integration 已通过 `surfaceForPath()` 区分 `portal` 与 `manage`，但这种区分主要停留在
-导航切换层：
-
-- 门户只有“库表订阅”和“我的服务”两个入口，默认首页直接进入订阅管理。
-- 资源查找、资源详情、适用场景、接入说明和申请入口没有形成连续旅程。
-- “我的服务”仍是服务 ID、路径、方法和状态组成的管理表格。
-- 插件市场只有关键词模拟结果和安装动作，不是面向普通用户的统一资源目录。
-- 申请、审批、发布、治理、运行观测等不同角色任务仍混排在同一套路由和侧栏中。
-- 31 个 Integration 功能页中有 16 个直接使用 `NebulaTable`，只有 5 个使用卡片表达，
-  页面默认视觉语言是“对象管理”，而不是“发现、理解和使用资源”。
-
-这不是单纯的主题或 CSS 问题。目标应是建立三个共享设计语言、但信息架构不同的产品界面：
-
-| 界面 | 主要角色 | 核心任务 | 默认密度 |
-| --- | --- | --- | --- |
-| 资源门户 | 资源消费者、应用开发者 | 搜索资源、判断是否适用、申请权限、跟踪进度、开始使用 | 舒适、内容导向 |
-| 提供方工作台 | 服务/数据/流程提供者 | 创建资源、发布版本、处理授权、查看使用反馈 | 中等、任务导向 |
-| 平台治理后台 | 平台管理员、审核员、运维 | 插件、租户、审批、路由、治理、监控 | 紧凑、数据导向 |
-
-资源门户的主旅程应固定为：
-
-```text
-发现/搜索 → 筛选/比较 → 资源详情 → 申请与用途说明
-  → 审批进度 → 获得访问权 → 接入指引/凭证 → 最近使用与续期
-```
-
-计划约束：
-
-- 门户不得直接复用 `NebulaAdminVerticalNav` 作为主要导航。
-- 普通用户不暴露“发布管理、Executor 路由、PF4J 状态”等后台术语。
-- 表格只用于批量比较和高密度管理；资源发现默认使用卡片、列表和详情页。
-- 资源卡片与详情消费统一 `ResourceSummaryViewModel` / `ResourceDetailViewModel`，
-  不按插件、接口、库表分别复制页面结构。
-- Portal、Provider、Admin 使用同一 token、状态语义和基础组件，但允许不同布局和信息密度。
-- 旧路由在迁移期保留 redirect，书签和 Electron/Web 深链不能失效。
-
-### F9. Shell 仍是应用容器，不是用户工作台（P0）
-
-`apps/sub-web/frontend` 已完成窗口承载、应用切换、组织切换、标签页和布局偏好等基础能力，
-但首页价值主要是“选择一个子应用”：
-
-- `IframeHost` 在没有活动应用时只展示“暂无内容”。
-- 应用集成以可排序图标网格为主，缺少按任务、角色和最近使用组织的入口。
-- Shell 没有跨应用搜索、待办、通知摘要、最近访问和快捷创建。
-- 面包屑、标签和侧栏能表达窗口状态，但不能表达跨应用业务上下文。
-- Web 与 Electron 共享宿主逻辑，但窗口尺寸差异尚未形成清晰的响应式策略。
-
-目标：
-
-- 将默认首页升级为个人工作台，汇总最近资源、申请进度、待办、异常和常用应用。
-- 全局搜索同时发现应用、资源、文档和可执行动作。
-- 应用坞降级为应用管理入口，不再承担产品首页。
-- 建立跨应用通知、命令面板、最近访问和统一返回路径。
-- 子应用加载失败、离线、会话过期和权限变化由 Shell 提供一致恢复体验。
-
-### F10. Settings 混合个人偏好与系统治理（P1）
-
-Settings 当前将用户、角色、权限、组织、应用、日志、外观和配置 8 个入口放在同一级导航，
-默认进入用户管理。其问题包括：
-
-- “外观设置”属于个人偏好，却与高权限系统管理并列。
-- 普通用户缺少独立的账号、安全、通知、语言和会话管理入口。
-- 用户、角色、权限页面以“表格 + 自建 modal”重复实现，缺少批量操作和详情上下文。
-- 配置页面直接暴露 key/value 和 JSON，缺少 schema、风险说明、继承关系和变更预览。
-- 页面中英文文案并存，例如 `Theme`、`Dark mode`、`Settings Admin`。
-- 管理入口主要按后端对象分类，没有按“成员与组织、安全与访问、应用与运行”组织。
-
-目标信息架构：
-
-| 区域 | 内容 | 主要角色 |
-| --- | --- | --- |
-| 个人设置 | 资料、安全、会话、外观、语言、通知 | 所有用户 |
-| 组织设置 | 成员、团队、角色、权限、组织策略 | 组织管理员 |
-| 平台设置 | 应用注册、全局配置、审计日志 | 平台管理员 |
-
-### F11. Login 缺少完整认证状态设计（P1）
-
-Login 已有账号登录、组织选择、Web/Electron 适配和相对完整的品牌面板，是当前视觉基础较好的
-页面，但仍需纳入整体体验治理：
-
-- 登录失败只展示服务端错误文本，缺少错误分类、重试和帮助入口。
-- 缺少忘记密码、账号锁定、会话失效、服务不可用和离线状态。
-- 组织选择使用普通下拉框，组织较多时不可搜索，也没有最近组织和组织说明。
-- Demo 账号直接暴露在正式界面，需要由开发环境配置控制。
-- Electron 窄窗口直接隐藏品牌区，Web 与 Electron 的品牌连续性不足。
-- 缺少 SSO/MFA/设备信任等未来认证方式的可扩展步骤容器。
-
-目标是建立统一 `AuthFlowLayout` 和显式认证状态机，使登录、组织选择、MFA、恢复和错误状态
-共享布局、焦点管理、返回行为与审计事件。
-
-### F12. Docs 只覆盖组件参考，未形成产品帮助体系（P1）
-
-Docs 当前拥有独立导航和 20+ 组件示例，但只有项目介绍、安装、主题 3 篇指南。它更接近
-`nebula-ui` 组件站，而不是 Nebula Studio 的用户帮助中心：
-
-- 没有资源查找、申请、接入、发布、审批、插件和故障排查文档。
-- 没有按普通用户、提供方、管理员划分学习路径。
-- 组件文档缺少可访问性、内容规范、响应式和业务模式示例。
-- 文档没有全文搜索、版本标识、更新时间、上一篇/下一篇和反馈入口。
-- 组件站与产品帮助共用导航层级，受众和发布节奏没有明确区分。
-
-目标：
-
-- 产品帮助以任务为目录，覆盖门户、工作台、管理后台和常见故障。
-- 开发者参考独立分区，覆盖组件、布局、设计 token、模式和 API 契约。
-- 支持全文搜索、角色入口、版本/更新时间、深链锚点和上下文帮助链接。
-- 从 Login、Shell、Portal、Settings 的关键空状态和错误状态直接跳转到对应帮助页。
-
----
-
-## 5. 目标架构
-
-目标不是再做一次目录大搬迁，而是在现有结构上形成稳定依赖方向。
-
-```text
-apps/*
-  └─ 仅负责进程入口、路由和页面组合
-
-packages/features/*
-  └─ 负责可复用业务能力
-      ├─ 可依赖 core/api-client、contracts、ui、editors
-      └─ 不依赖 apps/*
-
-packages/editors/*
-  └─ 负责编辑器能力
-      ├─ 可依赖 ui 基础包
-      └─ 编辑器之间不互相依赖
-
-packages/ui/*
-  └─ 负责展示组件，不访问业务 API
-
-packages/core/*
-  └─ 负责认证、运行时、Shell、租户、API Client、SSE
-
-packages/contracts/*
-  └─ 负责服务端传输契约和生成类型 facade
-```
-
-强制依赖方向：
-
-```text
-apps → features → editors/ui → core/contracts
-```
-
-禁止：
-
-- `core` 依赖 `features` 或 `apps`；
-- `ui` 访问后端 API；
-- feature 直接操作全局 Session Storage；
-- 页面重新声明后端 DTO；
-- Electron 与 Web 分别维护窗口或认证配置。
-
-### 5.1 目标体验架构
-
-```text
-AuthFlowLayout                           # 登录、组织、MFA、恢复与错误
-
-StudioShell
-├── PersonalWorkspace                    # 最近访问、待办、申请、异常、快捷动作
-├── GlobalSearch / CommandPalette        # 应用、资源、文档和动作
-├── NotificationCenter                   # 跨应用通知与可执行待办
-└── ProductSurfaces
-    ├── PortalLayout                     # 面向资源消费者
-    │   ├── 发现：统一搜索、分类、推荐、最近使用
-    │   ├── 资源：详情、版本、兼容性、文档、示例
-    │   ├── 申请：申请向导、审批进度、补充材料
-    │   └── 我的空间：已获资源、订阅、凭证、收藏
-    ├── ProviderWorkspaceLayout          # 面向资源提供方
-    │   ├── 我的资源、草稿、发布与版本
-    │   └── 授权请求、使用反馈与运行摘要
-    └── AdminConsoleLayout               # 面向平台治理
-        ├── 审批、租户、插件与策略
-        ├── Executor、路由与运行治理
-        └── 日志、统计与拓扑
-
-Settings
-├── PersonalSettingsLayout               # 资料、安全、会话、外观、语言、通知
-├── OrganizationSettingsLayout           # 成员、团队、角色、权限、组织策略
-└── PlatformSettingsLayout               # 应用注册、全局配置、审计日志
-
-Docs
-├── ProductHelp                          # 按角色和任务组织的使用帮助
-└── DeveloperReference                   # 组件、布局、token、模式和 API
-
-packages/features/personal-workspace     # 最近访问、待办和快捷动作
-packages/features/global-search          # 跨应用检索与命令注册
-packages/features/resource-catalog       # 搜索、筛选、卡片、详情 ViewModel
-packages/features/access-request         # 申请向导、审批状态与时间线
-packages/features/resource-workspace     # 已获资源、订阅与接入信息
-packages/features/plugin-catalog         # 插件领域能力与治理视图
-packages/ui/nebula-layout                # Auth/Shell/Portal/Admin/Settings/Docs 布局原语
-packages/ui/nebula-ui                    # 无业务 API 的基础组件与模式
-```
-
-跨应用体验所有权：
-
-| 能力 | 唯一所有者 | 子应用职责 |
-| --- | --- | --- |
-| 主导航、组织上下文、最近访问 | Shell | 注册页面元数据和最近访问事件 |
-| 全局搜索与命令 | Shell + `global-search` feature | 注册搜索 provider 和可执行动作 |
-| 通知与待办摘要 | Shell | 提供详情路由，不复制通知中心 |
-| 主题、语言、密度 | Settings + `nebula-layout` | 消费统一偏好，不维护本地副本 |
-| 登录与会话恢复 | Login/Auth packages | 展示无权限、过期后的上下文恢复入口 |
-| 产品帮助 | Docs | 页面提供稳定 help key，不硬编码文档 URL |
-
-建议的新路由语义：
-
-| 路由 | 用途 |
+| 类别 | 当前值 |
 | --- | --- |
-| `/catalog` | 统一资源发现首页 |
-| `/catalog/:resourceType/:resourceId` | 资源详情与申请入口 |
-| `/requests`、`/requests/:requestId` | 我的申请与审批进度 |
-| `/workspace/resources` | 已获授权的资源 |
-| `/workspace/subscriptions` | 我的订阅与事件 |
-| `/provider/*` | 提供方创建、发布、授权和版本 |
-| `/manage/*` | 平台治理与运维 |
-
-`resourceType` 首期覆盖 API、库表和 Connector；后续扩展 Flow、DAG 模板、插件时不新增另一套
-发现页面。现有 `/subscriptions`、`/my-interfaces`、`/service/*`、`/plugins/*` 在迁移期间保留
-兼容跳转。
-
----
-
-## 6. 分阶段实施计划
-
-### Phase 1：单源配置与契约硬化（P0，已完成）
-
-- [x] 从生成 manifest 构建 Preload capability map。
-- [x] 删除 `electron-preload/src/config.ts` 中的手写映射。
-- [x] 增加生成文件一致性检查。
-- [x] 建立 generated contracts facade。
-- [x] 迁移 Auth 和 Plugin API 类型。
-- [x] CI 增加配置、契约生成差异检查。
-
-验收：
-
-```powershell
-vp run check:generated
-vp check
-vp run --filter @nebula-studio/electron build
-```
-
-### Phase 2：全局体验基线与多界面骨架（P0，已完成）
-
-- [x] 走查资源消费者、提供方、管理员三类角色，形成任务清单、权限矩阵和待访谈问题。
-- [x] 为 Shell、Integration、Settings、Login、Docs 建立页面清单、任务归属和体验债务基线。
-- [x] 盘点现有路由，建立 Portal / Provider / Admin 路由元数据，不再通过路径名单推断界面。
-- [x] 为 `nebula-layout` 建立 Auth、Shell、Portal、Provider、Admin、Settings、Docs 布局边界。
-- [x] 定义排版层级、间距、圆角、阴影、内容宽度、交互状态和响应式断点等语义 token。
-- [x] 定义 comfortable / compact density，禁止页面自行维护密度、标题和内容宽度常量。
-- [x] 补齐 `PageHeader`、`SearchHero`、`FilterBar`、`ResourceCard`、`EmptyState`、
-  `StatusTimeline`、`StepFlow`、`DetailSection` 等无业务基础模式。
-- [x] 建立组件状态样例，覆盖 loading、empty、error、disabled、partial-data 和 skeleton。
-- [x] 统一图标、术语、日期、状态、错误文案和危险操作规范，删除页面中的文字图标和中英文漂移。
-- [x] 使用 Playwright 建立视觉回归与可访问性基线，为六类目标界面生成基准截图。
-- [x] 输出低保真线框与 Docs 可点击原型，在实现资源 API 前固化信息层级和关键文案假设。
-
-完成说明（2026-07-26）：
-
-- 实现与角色走查基线见 `nebula-studio/docs/frontend-experience-baseline.md`；真实用户访谈仍作为
-  Phase 4 首个资源门户纵向切片前的需求校准项，不将当前假设视为用户验证结论。
-- Docs 的 `/patterns/experience-baseline` 可交互展示完整、骨架加载、空、错误、无权限、
-  部分数据和禁用状态。
-- `e2e/experience-baseline.spec.ts` 覆盖 Shell、Login、Portal、Admin、Settings、Docs，
-  并保存亮暗主题 × 320/768/1280/1440 px 的 48 张截图。
-
-验收：
-
-- `/catalog` 与 `/manage` 使用不同布局和导航，但主题、状态色与基础组件一致。
-- Shell、Settings、Login、Docs 均有明确布局契约，不再通过页面级 CSS 模拟公共布局。
-- 320、768、1280、1440 px 关键宽度无横向溢出，键盘可完成导航和主要操作。
-- 正文、控件、状态色达到 WCAG 2.2 AA；支持 `prefers-reduced-motion`。
-- 页面不再通过散落 CSS 重复定义标题、工具栏、空状态和内容最大宽度。
-
-### Phase 3：Shell 工作台与认证入口（P0，1–2 个迭代）
-
-#### Phase 3A：个人工作台
-
-- [x] 用 `PersonalWorkspace` 替换 Shell 的默认“暂无内容”状态。
-- [x] 汇总最近访问、我的申请、待办、运行异常、常用资源和快捷创建。
-- [x] 将应用坞改为应用管理/启动器，支持按角色、分类和最近使用筛选。
-- [x] 建立统一页面元数据：标题、图标、help key、搜索关键词、所需角色和返回目标。
-- [x] Web 与 Electron 使用相同工作台数据模型，在窄窗口降级为单列任务流。
-
-#### Phase 3B：全局导航与反馈
-
-- [x] 增加全局搜索/命令面板，首期覆盖应用、资源、文档和页面动作。
-- [x] 将通知中心升级为可执行待办，支持定位到资源、申请、审批或错误详情。
-- [x] 统一子应用 loading、加载失败、离线、会话过期和权限变化的 Shell 级恢复界面。
-- [x] 优化侧栏、标签页、面包屑和返回行为，避免 Shell 与子应用出现双重导航。
-- [x] 保留 iframe 隔离，但建立页面标题、焦点恢复和跨应用跳转协议。
-
-#### Phase 3C：Login/AuthFlow
-
-- [x] 将 Login 重构为显式步骤状态机：账号、组织、MFA、恢复、成功和失败。
-- [x] 增加可搜索组织选择、最近组织、返回登录和会话失效上下文。
-- [x] Demo 账号只在开发配置开启时展示。
-- [x] 为账号锁定、凭证错误、服务不可用、网络离线和未知错误提供不同恢复动作。
-- [x] 保持 Web/Electron 品牌与布局连续性，并验证自动填充、密码管理器和键盘提交。
-
-2026-07-26 已完成 Phase 3 前端基线。工作台摘要当前使用 Shell 摘要模型，资源与申请真实聚合数据将在
-Phase 4 API 接入后替换零值；MFA 与自助恢复已具备明确状态、自动填充语义和安全回退，但在后端提供
-验证/恢复端点前不会伪造提交成功。
-
-验收：
-
-- 登录后默认进入有业务价值的个人工作台，不再停留在应用选择或空状态。
-- 用户可在不打开子应用导航的情况下搜索资源、文档并处理待办。
-- 子应用切换后焦点位置可预测，加载失败和会话过期可恢复。
-- Login 的每个状态都有标题、说明、主动作、辅助动作和可访问焦点顺序。
-
-### Phase 4：资源发现与申请门户（P0，2–3 个迭代）
-
-2026-07-26 已完成首个纵向闭环：目录通过真实 API 聚合接口、资源、Connector、插件目录与组织资源，
-各数据源独立降级；申请直接提交后端 `subscription-request`，并补齐按用户查询和取消契约。
-目录筛选、收藏与最近访问保存在浏览器侧，申请记录与授权状态以后端为事实来源。
-
-#### Phase 4A：可发现
-
-- [x] 建立跨 API、库表、Connector 的 `ResourceSummaryViewModel`。
-- [x] 实现门户首页：全局搜索、资源类型、常用分类、最近访问和申请进度摘要。
-- [x] 实现资源目录：关键词、类型、标签、提供方、可申请状态、排序和分页。
-- [x] 筛选条件同步 URL，支持分享、刷新恢复和浏览器前进/后退。
-- [x] 用真实目录 API 替换当前插件市场的本地模拟搜索。
-
-#### Phase 4B：可理解、可申请
-
-- [x] 建立统一资源详情页，展示摘要、用途、负责人、版本、SLA、权限范围和兼容性。
-- [x] 按资源类型插入 API 示例、库表字段、Connector 配置等领域详情，不复制详情页壳。
-- [x] 实现分步申请向导：用途、环境、期限、权限范围、数据敏感性确认和提交预览。
-- [x] 实现我的申请与状态时间线，明确待补充、审批中、通过、拒绝、到期等下一步动作。
-- [x] 失败保留表单草稿；重复申请、无权限和资源下线均提供可行动的错误说明。
-
-#### Phase 4C：可使用
-
-- [x] 将“我的服务”和“库表订阅”收敛为“我的资源/我的订阅”。
-- [x] 为已获资源提供接入地址、鉴权方式、示例、凭证状态、订阅事件和续期入口。
-- [x] 首期支持收藏、最近访问和最近申请；推荐算法不作为上线前置条件。
-- [x] 埋点覆盖搜索、查看详情、开始申请、提交、获批后首次访问等关键漏斗。
-
-验收：
-
-- 用户无需进入管理中心即可完成“找到资源 → 提交申请 → 查看进度 → 获取接入信息”。
-- 空搜索、无可申请资源、审批拒绝、资源下线和凭证过期均有独立状态。
-- 资源类型扩展通过 registry/slot 完成，不复制目录、详情和申请流程。
-- Playwright 覆盖门户核心旅程，API mapper 与申请状态机有单元测试。
-
-### Phase 5：管理面与 Settings 现代化（P1，2–3 个迭代）
-
-2026-07-26 已完成 Phase 5 的角色信息架构、插件 Schema 单源链路和 Settings 核心页面现代化。
-Integration 已建立 `/provider/*`、`/manage/*` 与角色工作台，Settings 已拆分个人、组织和平台设置，
-并按角色隐藏导航与路由。后台存量列表的批量选择/统一抽屉仍作为本阶段最后一个横向收口项保留，
-避免在后端尚无批量事务契约时用前端串行请求伪装原子批处理。
-
-#### Phase 5A：Integration Provider/Admin
-
-- [x] 新建 `features/plugin-catalog`。
-- [x] 统一平台 descriptor 与 Camel descriptor 的前端 ViewModel。
-- [x] Connector 配置表单消费 `configSchema`。
-- [x] DAG 节点消费 `nodeSchema`，删除重复静态映射。
-- [x] 提取 `subscription-manager`。
-- [x] 为 feature 增加 API/mapping/composable 单元测试。
-- [x] 将提供方任务迁移到 `/provider/*`，将平台治理任务迁移到 `/manage/*`。
-- [x] 后台首页改为待办、异常和关键指标摘要，不以功能菜单作为首页。
-- [ ] 统一后台列表的筛选区、列密度、批量操作、详情抽屉和危险操作确认模式。
-- [x] 只在需要跨记录比较或批量处理时保留表格；单对象操作进入详情页或抽屉。
-- [x] 按角色隐藏不可执行入口，而不是进入页面后再显示无权限状态。
-
-验收：
-
-- Integration 页面只负责路由和组合。
-- 插件详情不依赖 Camel descriptor 中重复的身份字段。
-- 内置 HTTP/MySQL/PostgreSQL 插件均能生成正确配置表单和 DAG 节点。
-- Portal 页面不导入 Admin 专用导航和高密度表格模式。
-- Provider 与 Admin 的待办、审批和治理动作有明确的角色边界。
-
-#### Phase 5B：Settings
-
-- [x] 将个人设置从系统管理导航拆出，所有登录用户可访问资料、会话、外观和语言。
-- [x] 按“组织与成员、访问控制、应用与运行”重组组织/平台管理导航。
-- [ ] 用统一 `EntityListPage`、筛选栏、批量操作和详情抽屉改造用户、角色、权限和应用页面。
-- [x] 删除 Settings 内自建 modal/confirm 样式，使用 `NebulaDialog`、`use-confirm` 和表单模式。
-- [x] 权限管理提供树/矩阵两种视图，并显示角色继承、冲突和实际权限来源。
-- [x] 配置管理消费 schema，展示默认值、继承层级、敏感性、影响范围和变更预览。
-- [x] 审计日志提供结构化筛选、详情抽屉、关联实体跳转和导出。
-- [x] 统一中文文案；专业缩写保留英文并提供解释。
-
-验收：
-
-- 普通用户进入 Settings 时不会看到无权限的系统治理入口。
-- 组织管理员与平台管理员看到的导航、首页待办和可执行动作符合权限矩阵。
-- 用户/角色/权限/应用共享列表和详情模式，危险操作有影响说明和二次确认。
-- 配置变更可在提交前看见作用域、旧值、新值和潜在影响。
-
-### Phase 6：Docs、帮助与首次使用引导（P1，已完成）
-
-2026-07-26 已完成产品帮助、上下文帮助与首次任务引导闭环。Docs 使用单源文档注册表驱动
-全文搜索、角色目录和文档元数据；Shell 根据子应用上报的稳定 help key 打开对应任务文档，
-首次登录、首次申请和首次发布引导保存在版本化本地状态中，可跳过、完成或重新启动。
-
-- [x] 将 Docs 顶层拆为“产品帮助”和“开发者参考”，保留现有组件示例。
-- [x] 产品帮助按消费者、提供方、管理员建立快速开始和任务目录。
-- [x] 首批补齐资源查找/申请/接入、资源发布、审批、插件配置和故障排查文档。
-- [x] 增加全文搜索、版本、更新时间、目录锚点、上一篇/下一篇和反馈入口。
-- [x] 组件参考补齐可访问性、内容规范、键盘行为、响应式和常见组合模式。
-- [x] 建立稳定 help key，由 Shell、Login、Portal、Provider、Admin、Settings 映射上下文帮助。
-- [x] 为首次登录、首次申请、首次发布提供可跳过且可再次打开的任务引导。
-- [x] 文档示例进入类型检查或构建验证，避免示例与实际组件 API 漂移。
-
-验收：
-
-- 用户可从错误、空状态或页面帮助入口直达对应任务文档。
-- 产品帮助与组件参考拥有独立导航和搜索过滤，不混淆普通用户与开发者受众。
-- 首次使用引导不遮挡核心操作、不强制观看，并可在帮助中心重新启动。
-- 文档中的代码示例和组件示例随 CI 构建。
-
-### Phase 7：编辑器和 UI 依赖治理（P1，已完成）
-
-2026-07-26 已确认并落实“基础 UI → provider-neutral 编辑器外壳 → 异步 Provider →
-业务应用”的单向依赖模式，详细决策见 `nebula-studio/docs/editor-package-architecture.md`。
-Monaco 作为 `code-editor` 的默认异步 Provider；未来 CodeMirror 使用并列适配器，TipTap
-因文档模型不同进入独立富文本编辑器包，不与代码编辑器共享主入口。
-
-- [x] 补齐 `code-editor` package。
-- [x] 把 CodeMirror/Monaco/TipTap 等编辑器依赖移出基础 UI 包。
-- [x] 建立编辑器导出、类型检查、单测和 Bundle Budget。
-- [x] 检查循环依赖和跨层引用。
-
-验收：
-
-- `nebula-ui` 不再承担代码/富文本编辑器实现。
-- 任一编辑器升级不会触发无关 feature 的强制改造。
-
-### Phase 8：真实全链路与体验验收（P0，验收基础设施已完成）
-
-- [x] 保留 Mock E2E 作为快速回归。
-- [x] 新增 real-stack Playwright project。
-- [x] CI/本地脚本拉起 platform-console、Camel Console、Executor 和 Web。
-- [x] 覆盖登录、个人工作台、全局搜索、资源申请、Settings 权限、上下文帮助、
-  插件、订阅、Gateway 和 Monitor。
-- [x] Electron 至少覆盖启动、认证恢复、Preload capability 和窗口切换。
-- [x] 增加 Shell/Login/Portal/Admin/Settings/Docs 视觉回归、键盘导航、焦点管理和主题切换测试。
-- [x] 对资源目录和详情建立首屏性能预算，记录 Web 与 Electron 的真实基线。
-
-验收：
-
-- Mock E2E 与真实 E2E 分组运行。
-- 真实后端字段变化能在 contract generation 或 E2E 中失败。
-- 测试失败可定位到前端、Console 或 Executor。
-- 六类关键界面在亮色、暗色、Web、Electron 和窄屏下均有可比较截图。
-- 核心用户旅程没有仅靠颜色传达状态，也没有不可见的键盘焦点。
-
-实现结果（2026-07-26）：
-
-- Playwright 已拆分为 `mock-regression`、`experience`、`real-stack` 和
-  `electron` 四个 project；Mock 12 项、体验 10 项和 Electron 1 项本地通过。
-- Shell/Login/Portal/Admin/Settings/Docs 已建立亮暗主题与
-  320/768/1280/1440 px 共 48 张 Windows 视觉基线；Electron 已建立 Portal
-  亮暗主题基线，并记录启动与目录首屏性能附件。
-- real-stack 脚本会先构建所需后端 reactor，按服务保存日志、检测进程提前退出，
-  再执行在线契约生成与差异检查；CI 使用 Windows runner 执行视觉、Electron
-  和定时/手动真实栈验收。
-- 当前工作区的真实栈最终验收仍被后端启动状态阻塞：
-  `platform-console` 在创建 `ConfigRestController` 时缺少
-  `ConfigService` Bean。该失败已由
-  `test-results/real-stack/platform-console.log` 精确定位；修复后端 Bean
-  装配后重新运行 `vp run test:e2e:real` 即可继续契约与 UI 全链路验收。
-
----
-
-## 7. 暂缓事项
-
-以下事项不作为当前重构前置条件：
-
-- 将 `apps/sub-web` 整体改名为 `apps/renderers`；
-- 立即拆出 Tasks/Governance/Release/Plugins 四个独立应用；
-- 一次性拆分全部 Integration 页面；
-- 为目录美观合并 `electron-shared` 与其他 core 包；
-- 在没有数据前承诺固定百分比的构建速度提升。
-
-独立子应用拆分触发条件：
-
-1. 有独立发布节奏；
-2. 有明确团队所有权；
-3. 需要独立权限或部署边界；
-4. Integration 首屏和构建体积无法通过懒加载解决；
-5. feature 已完成提取，不依赖 Integration 内部状态。
-
----
-
-## 8. 质量关口
-
-每个阶段必须满足：
-
-- `vp check` 通过；
-- 受影响 workspace 单测通过；
-- `vp run build` 通过；
-- 生成脚本执行后无未提交差异；
-- 不新增手写服务端 DTO；
-- 不新增窗口/Preload 双源配置；
-- Web 与 Electron 共享同一能力定义；
-- 新 API 有 MSW 或单元测试；
-- 核心用户路径有 Playwright 覆盖；
-- 新页面有 loading、empty、error、partial-data 和无权限状态；
-- Shell、Login、Portal、Settings、Docs 核心页面通过键盘导航、焦点可见性和
-  WCAG 2.2 AA 检查；
-- Shell/Login/Portal/Admin/Settings/Docs 基准页面有亮色、暗色和关键响应式宽度的视觉回归；
-- 每个页面具有唯一 help key，或明确标记为无需上下文帮助；
-- 文档与实际目录一致。
-
-建议 CI：
+| Node.js | `>=22.12.0` |
+| 包管理声明 | `pnpm@11.5.1` |
+| 日常工具 | Vite+ CLI `vp` |
+| Vite+ / Vite | 0.2.6 / 8.1.3 |
+| Vue / Vue Router | 3.5.35 / 4.6.4 |
+| TypeScript | 6.0.3 |
+| Electron / electron-vite | 43.x / 5.x |
+| Tailwind CSS | 4.3.3 |
+| Vitest / Playwright | 4.1.10 / 1.62.0 |
+| 工作区清单 | 38 个 `package.json` |
+
+版本事实来自根 `package.json` 与 `pnpm-workspace.yaml`。尽管 package manager 字段仍声明 pnpm，仓库约定日常安装、脚本、检查和测试统一经 `vp` 执行。
+
+## 3. 当前架构
+
+### 3.1 应用层
 
 ```text
-install
-  → generate:configs
-  → generate:contracts
-  → generated-diff-check
-  → vp check
-  → unit tests
-  → workspace build
-  → accessibility + visual regression
-  → mock e2e
-  → real-stack e2e（合并或夜间关口）
+apps/
+├── electron/                 # 主进程、窗口生命周期、renderer 引导
+├── electron-preload/         # 统一 preload + capability 工厂
+├── web/                      # Web Shell 与 embed 入口
+└── sub-web/
+    ├── frontend/             # Shell/个人工作台
+    ├── integration/          # Portal、Provider、Admin 与 Camel 业务
+    ├── settings/             # 个人、组织、平台设置
+    ├── login/                # 认证流程
+    └── docs/                 # 产品帮助与开发者参考
 ```
 
----
+### 3.2 共享层
 
-## 9. 成功指标
+```text
+packages/
+├── contracts/               # 手写兼容契约 + OpenAPI 生成结果/facade
+├── core/
+│   ├── api-client
+│   ├── app-shell
+│   ├── auth / auth-provider
+│   ├── electron-shared
+│   ├── msw
+│   ├── runtime
+│   ├── shell
+│   ├── sse-events
+│   └── tenant
+├── editors/
+│   ├── code-editor
+│   ├── dag-editor
+│   ├── flow-editor
+│   ├── integration-panel
+│   └── low-code-form
+├── features/
+│   └── use-confirm          # 当前唯一正式共享 feature
+├── ui/
+│   ├── nebula-agent
+│   ├── nebula-layout
+│   └── nebula-ui
+├── styles/
+└── types/
+```
 
-| 指标 | 当前基线 | 目标 |
+### 3.3 依赖方向
+
+目标依赖方向为：
+
+```text
+apps → app-local features → shared features/editors/ui → core/contracts
+```
+
+约束：
+
+- `core` 不依赖 `apps` 或业务 feature；
+- `ui` 不访问业务 API；
+- 页面不重新声明服务端 DTO；
+- Electron 与 Web 不维护两套窗口、认证或 API target；
+- feature 不直接维护另一套全局 Session/Tenant 存储。
+
+## 4. 运行模型
+
+### 4.1 配置单源
+
+`configs/windows.json` 是以下信息的单源：
+
+- Web/Electron renderer；
+- embed entry；
+- API base 与 8090/8080/8081 target；
+- label、category、help key、搜索关键词和角色；
+- preload capability；
+- display order。
+
+生成脚本将配置转为 app-shell/Electron 可消费的代码，`check:generated` 检查幂等和漂移。
+
+### 4.2 宿主与 renderer
+
+- Web 由 `apps/web/src/shell-entry.ts` 启动主 Shell，由 embed entry 加载子应用。
+- Electron 使用单一 renderer boot，再根据窗口/renderer 配置动态加载子应用。
+- preload 由统一入口按窗口 capability 组装 auth、notify、settings、shell 等桥接。
+- 子应用通过 `bootMicroApp` 适配 standalone、Web embed、Electron 三种运行模式。
+- 当前 Electron 内嵌展示配置为 iframe，与 Web Shell 保持一致。
+
+### 4.3 认证与租户
+
+- `auth-provider` 是认证 Session 的共享入口。
+- API client 自动注入 Bearer Token、租户头并统一处理 401。
+- `app-shell` 负责 Web/Electron 的会话同步和 embed 导航协议。
+- `tenant` 包负责加载、选择和切换租户；子应用不得新建私有租户存储键。
+- Shell Event Bus 已有 auth、tenant、theme 等跨应用事件，但真实数据失效仍需 real-stack 验证。
+
+## 5. 产品界面现状
+
+### 5.1 Shell / Frontend
+
+已实现：
+
+- 个人工作台；
+- 最近访问、申请、待办、异常和快捷动作模型；
+- 应用启动器；
+- 全局搜索/命令入口；
+- 组织切换、标签、面包屑和 iframe 子应用承载；
+- 加载失败、会话失效等恢复界面。
+
+限制：部分摘要仍由前端模型或零值 provider 提供，尚未通过真实后端聚合数据验收。
+
+### 5.2 Integration
+
+路由和导航已区分：
+
+| Surface | 主要角色 | 当前职责 |
 | --- | --- | --- |
-| 窗口能力配置源 | 仅 `windows.json`，生成 Preload capability | 保持单源与幂等检查 |
-| PF4J/Camel 插件身份解析 | 页面可能按单 descriptor 假设 | 使用组合 ViewModel |
-| 生成契约业务采用率 | 较低 | 新增 API 100%，存量分批迁移 |
-| 正式 feature 包 | 1 个 | 首批 3–4 个真实复用包 |
-| Integration 职责 | 页面、API、mapper、feature 混合 | 页面组合与 feature 分离 |
-| Shell 默认首页 | 已有最近访问、待办、申请、异常和快捷动作 | 接入更多真实摘要 provider |
-| 跨应用查找 | 已支持应用、资源、文档和动作 | 扩展真实后端搜索结果 |
-| Portal 主旅程 | 已有发现、详情、申请、进度和我的资源闭环 | 扩展资源类型与真实审批数据 |
-| Portal/Admin 边界 | 已使用独立信息架构与共享设计语言 | 保持业务模式分层 |
-| 资源页面表达 | 目录卡片/列表 + 详情；管理面保留表格 | 持续验证真实数据密度 |
-| Settings 信息架构 | 已拆分个人、组织、平台三级入口 | 统一剩余实体列表页 |
-| Login 状态覆盖 | 前端覆盖登录、组织、MFA、恢复及分类错误 | 接入后端 MFA/恢复契约 |
-| Docs 内容 | 产品帮助 + 开发者参考 + 上下文帮助 | 随版本持续维护 |
-| 可访问性 | 已有键盘焦点、溢出和关键旅程自动断言 | 扩展 WCAG 2.2 AA 自动扫描 |
-| 视觉回归 | 六类界面 × 亮暗主题 × 4 个宽度，共 48 张基线 | 保持稳定并审查有意变更 |
-| Code Editor | 可独立构建、测试，使用异步 Provider | 保持 Provider 与业务解耦 |
-| Playwright | 4 个 project、24 项测试；真实栈因后端 Bean 缺失未通过 | Mock/体验/Electron 稳定回归 + 真实全链路通过 |
-| Preload 实现 | 实现和 capability 配置均单源 | 保持生成校验 |
+| Portal | 资源消费者 | 资源目录、详情、申请、我的资源、订阅 |
+| Provider | 资源提供方 | 创建、版本、发布、授权与使用摘要 |
+| Admin | 管理员/运维 | 审批、插件、租户、Executor、治理、监控 |
 
----
+应用内已经形成 `resource-catalog`、`plugin-catalog`、`subscription`、flows 等 feature 目录，但它们不是 `packages/features` 下的共享包。短期应继续收敛应用内部边界，不能仅为满足旧计划数量而制造共享包。
 
-## 10. 风险与缓解
+### 5.3 Settings
 
-| 风险 | 影响 | 缓解 |
-| --- | --- | --- |
-| 删除 Preload 手写映射导致窗口能力缺失 | Electron API 不可用 | 生成期 Schema 校验 + capability 测试 |
-| OpenAPI 类型直接泄漏到页面 | 页面类型复杂、迁移成本高 | generated facade + ViewModel mapper |
-| 过早拆分 Integration | 路由、状态和交付节奏更复杂 | 先提取 feature，再决定拆应用 |
-| 插件 descriptor 新旧格式并存 | 市场详情或 DAG 节点缺字段 | 后端组合 DTO + 前端兼容 mapper |
-| 真实 E2E 环境不稳定 | CI 偶发失败 | Mock 快速关口 + real-stack 独立重试和日志 |
-| 编辑器依赖拆分导致包体重复 | 构建产物增大 | manual chunks + bundle budget |
-| 只做视觉换肤，不调整任务流 | 界面更漂亮但用户仍找不到资源 | 先验证旅程和信息架构，再实现高保真视觉 |
-| Portal 与 Admin 各自复制组件 | 维护两套设计系统 | 共享 token/primitive，布局与业务模式分层 |
-| 统一资源模型过度抽象 | 类型差异被抹平，详情信息不足 | 公共摘要 + 资源类型 detail adapter/slot |
-| 新旧路由一次切换 | 书签、深链和 Electron 恢复失效 | 兼容 redirect + 路由迁移测试 + 分阶段发布 |
-| 后端缺少统一搜索或申请状态 | 前端原型无法接入真实数据 | Phase 2 固化契约缺口，Phase 4 前补 API/facade |
-| 动效和大图造成性能回退 | Electron 与低性能设备体验下降 | 动效克制、支持 reduced motion、建立性能预算 |
-| Shell 聚合过多业务数据 | 首页慢、Shell 与 feature 强耦合 | 摘要契约 + provider registry + 分区懒加载 |
-| Settings 改造误放宽管理权限 | 普通用户看到或执行治理动作 | 路由、导航、API 三层权限校验 |
-| Docs 与产品演进再次脱节 | 帮助内容失真 | help key 覆盖检查 + 示例构建 + 发布清单 |
-| Login 视觉重构影响认证稳定性 | 无法登录或回跳错误 | 保持 Auth API 不变，按状态逐步替换并做多端 E2E |
+已实现个人、组织和平台三类入口、角色导航、权限矩阵、配置展示和审计页面。剩余问题：
 
----
+- 用户、角色、权限、应用等实体列表模式未完全统一；
+- 批量操作依赖后端批量事务契约，不能用前端串行请求伪造原子性；
+- 组织/租户/权限真实联调依赖 Platform Console 恢复启动。
 
-## 11. 近期执行顺序
+### 5.4 Login / AuthFlow
 
-1. [x] 完成 F1：Preload capability 单源化。
-2. [x] 完成 F2：Auth/Plugin 生成契约迁移。
-3. [x] 执行 Phase 2：全应用页面清单、角色任务、布局契约、token 和设计模式基线。
-4. [x] 交付 Shell 个人工作台、全局搜索骨架和分类错误恢复界面。
-5. [x] 将 Login 收敛到 AuthFlow 状态机，补齐多端和失败状态。
-6. [x] 以 API/库表/Connector 为首批资源，交付 `/catalog` 目录和统一详情页。
-7. [x] 接入申请向导、状态时间线和“我的资源”，完成资源消费闭环。
-8. [ ] 完成 F4：插件组合 ViewModel、Schema 驱动 UI，并迁移到 Provider/Admin 界面。
-9. [x] 重组 Settings 个人/组织/平台导航并迁移首批用户、角色、权限页面。
-10. [x] 建立 Docs 产品帮助分区、全文搜索和跨应用 help key。
-11. [ ] 提取 `personal-workspace`、`global-search`、`plugin-catalog`、`access-request`、
-   `resource-catalog` 和
-   `subscription-manager`。
-12. [x] 补齐 `code-editor` 包。
-13. [x] 建立真实后端、视觉回归和可访问性 Playwright 关口；真实栈最终通过仍依赖
-    后端修复 `ConfigService` Bean 装配。
+前端显式状态包括：
 
-纵向切片“登录 → 个人工作台 → 搜索 API 资源 → 查看详情 → 提交申请 → 查看审批状态 →
-获得接入信息 → 打开对应帮助”已经具备 Mock、视觉和 Electron 验收基础。下一步先修复
-后端 `ConfigService` 装配并让该切片通过 real-stack，再扩展库表、Connector、Flow 和
-插件资源类型；不要以新增组件数量替代真实旅程验收。
+```text
+credentials → organization → mfa → recovery → success/failure
+```
+
+已覆盖账号错误、锁定、网络、服务不可用、会话过期、权限变化和 MFA required 等分类。后端当前没有 MFA/TOTP/恢复事务 API，因此：
+
+- mfa/recovery 只能作为 UI/状态容器；
+- 不得在 Mock 之外伪造真实验证成功；
+- 后端状态机落地后再启用真实提交和契约映射。
+
+### 5.5 Docs
+
+已拆分产品帮助和开发者参考，并有全文搜索、角色目录、文档元数据、help key 和首次任务引导。后续重点是随真实功能更新内容，而不是再次调整顶层结构。
+
+### 5.6 Editors
+
+`code-editor` 已有标准入口、独立类型检查、测试、异步 Monaco provider 和 bundle budget。基础 UI 不再直接承载编辑器实现。DAG、Flow、低代码表单继续作为独立编辑能力，不应互相反向依赖。
+
+## 6. 已完成事项
+
+以下事项不再进入重构 backlog：
+
+- [x] `windows.json` 配置单源与 Schema；
+- [x] Web/Electron 共享 manifest 和 API target；
+- [x] 统一 preload capability；
+- [x] app-shell SDK 与 shell UI 分离；
+- [x] 统一 auth-provider、runtime 和 api-client 基础；
+- [x] Portal/Provider/Admin 信息架构；
+- [x] Settings 个人/组织/平台一级分区；
+- [x] Docs 产品帮助/开发者参考分区；
+- [x] AuthFlow 前端状态容器；
+- [x] code-editor 边界、测试和 bundle budget；
+- [x] Mock、experience、real-stack、electron 四类 Playwright project；
+- [x] 保留 `apps/sub-web` 命名，不做无收益的整体迁移。
+
+## 7. 当前缺口
+
+### F0：真实栈尚未通过（P0）
+
+最后一次记录的真实运行在 `platform-console` 缺少 `ConfigService` Bean 处失败；当前后端源码已有候选装配，但没有当前 HEAD 的启动证据。本次审查只执行了 Playwright test listing，没有重新运行真实栈。核实装配并在必要时修复后，必须重新执行 `vp run test:e2e:real`。
+
+### F1：generated contracts 采用率不足（P0）
+
+现状：
+
+- 有 `generate:contracts`；
+- 有离线 OpenAPI 与 generated TypeScript；
+- 有业务 facade；
+- Auth/Plugin 等部分域已迁移；
+- System/Integration 等仍有手写兼容契约。
+
+目标：新增 API 100% 经 facade；存量按域迁移；CI 执行生成差异和 breaking change 检查。
+
+### F2：真实数据与前端 ViewModel 未完全闭环（P1）
+
+Portal、Shell 摘要、Settings 和部分管理页已经有 UI 与 mapper，但需在真实三应用栈中验证：
+
+- 字段、分页、状态枚举和错误码；
+- 组织/租户切换后的缓存失效；
+- 资源申请、审批和发布状态；
+- Gateway、订阅、Monitor 与插件安装。
+
+### F3：feature 治理（P1）
+
+当前 `packages/features` 只有 `use-confirm`。提升共享包必须同时满足：
+
+1. 至少两个真实消费者；
+2. 不依赖应用 Router；
+3. API、mapper、composable 和状态机可独立测试；
+4. 有稳定公共入口；
+5. 提升后不会造成宿主或 UI 层反向依赖。
+
+优先评估 `plugin-catalog`、`resource-catalog`、`subscription-manager`，但不预设必须全部提升。
+
+### F4：Settings 横向收口（P1）
+
+- 统一 EntityList、筛选、详情抽屉和危险操作说明；
+- 对批量操作先补后端契约；
+- 配置页面继续展示作用域、默认值、继承、敏感性和影响预览；
+- 权限隐藏必须同时覆盖导航、路由和后端 API。
+
+### F5：AuthFlow 后端接入（P1）
+
+等待后端提供预认证事务、MFA 和恢复契约后：
+
+- 以 `nextStep` 和稳定错误码驱动状态，不解析错误文案；
+- MFA/组织完成前不保存最终 Token；
+- Web/Electron 共用同一状态机；
+- 增加重放、过期、锁定和恢复后旧会话失效 E2E。
+
+### F6：类型与构建治理（P2）
+
+- 继续集中环境类型，减少本地重复 `env.d.ts`；
+- 保持编辑器异步加载和 bundle budget；
+- Electron 自动更新当前仍是占位，只有接入签名、更新源和回滚验证后才能标记完成。
+
+## 8. 测试现状
+
+本次在当前提交执行：
+
+```text
+vp exec playwright test --list
+```
+
+实际枚举 **24 项测试、8 个文件**：
+
+| Project | 数量 | 职责 |
+| --- | ---: | --- |
+| `mock-regression` | 12 | 快速稳定回归，允许固定网络响应 |
+| `experience` | 10 | 亮暗主题、4 个响应式宽度、键盘焦点和性能预算 |
+| `real-stack` | 1 | 三后端应用 + Web + 在线契约；禁止业务网络 Mock |
+| `electron` | 1 | 启动、会话、preload capability 和窗口切换 |
+
+“测试已列出”不等于“测试在当前提交全部通过”。仓库文档记录的历史通过结果可作为回归参考，但完成报告必须附本次实际命令和退出码。
+
+## 9. 增量实施顺序
+
+### Phase A：恢复真实栈
+
+- [ ] 修复 Platform Console Context；
+- [ ] 三后端应用健康检查；
+- [ ] 在线生成契约无漂移；
+- [ ] real-stack 完整通过。
+
+### Phase B：契约和真实数据
+
+- [ ] 迁移 Platform/System/Integration contracts；
+- [ ] Portal/Settings/Camel 关键路径使用真实响应；
+- [ ] 组织/租户切换与跨应用失效测试；
+- [ ] 新 API 禁止手写重复 DTO。
+
+### Phase C：应用内边界收敛
+
+- [ ] Integration 页面只组合 feature；
+- [ ] 为 mapper、composable、状态机增加单元测试；
+- [ ] 按真实复用证据提升共享 feature；
+- [ ] 统一 Settings 存量实体页面。
+
+### Phase D：认证增强与生产体验
+
+- [ ] 接入后端 MFA/恢复状态机；
+- [ ] Electron 更新链路；
+- [ ] 更完整的 WCAG 扫描、视觉审查和性能基线；
+- [ ] 插件签名、实时通知和观测能力对应 UI。
+
+## 10. 质量关口
+
+每个前端变更至少满足：
+
+- `vp check`；
+- 受影响 workspace 的 typecheck/test；
+- `vp run build:web` 或 `vp run build`；
+- 生成脚本后无未提交差异；
+- 新 API 有 adapter/mapper 测试；
+- 新页面有 loading、empty、error、partial、forbidden 状态；
+- Web/Electron 共享能力定义；
+- 核心用户旅程有对应 Playwright 层级；
+- 真实业务完成声明必须以 real-stack 为证据。
+
+推荐完整顺序：
+
+```text
+vp install
+  → vp run check:generated
+  → vp check
+  → vp run test
+  → vp run build
+  → vp run test:e2e:mock
+  → vp run test:e2e:experience
+  → vp run test:e2e:electron
+  → vp run test:e2e:real
+```
+
+## 11. 暂缓事项
+
+以下事项没有当前代码证据表明值得优先实施：
+
+- 把 `apps/sub-web` 整体改名；
+- 立即把 Integration 拆成多个独立应用；
+- 为满足目录数量创建空 feature 包；
+- 在后端无批量事务 API 时实现“伪批量”；
+- 在真实数据闭环前继续扩大视觉组件数量。
+
+## 12. 成功标准
+
+前端重构真正完成应满足：
+
+1. 三平台应用真实栈持续通过；
+2. 后端字段漂移在生成、编译或 E2E 阶段被阻止；
+3. Portal、Provider、Admin 和 Settings 使用真实数据与权限；
+4. Web 与 Electron 共用窗口、认证、租户和 API 定义；
+5. App-local feature 边界清晰，共享包只来自真实复用；
+6. AuthFlow 的 MFA/恢复由真实后端状态机驱动；
+7. Mock、体验、Electron 和 real-stack 各自承担明确且不互相替代的责任。

@@ -1,485 +1,259 @@
-# Nebula 全栈实现分析与优化规划
-
-> 分析日期：2026-07-10（基于当前代码仓库 spot-check 重写；2026-07-24 补充
-> `nebula-config` 配置中心专项核实；2026-07-26 同步前端 Phase 1–8 与真实栈验收结果）
->
-> 范围：nebula（后端 Java/Spring Boot 平台） + nebula-studio（前端 Vue3/Monorepo）
->
-> 前置文档：[模块规划.md](./模块规划.md)、[development-status.md](../nebula/docs/development-status.md)、[implementation-backlog.md](../nebula/docs/implementation-backlog.md)、[development-plan.md](../nebula/docs/development-plan.md)、[详细开发规划](./nebula-development-detailed-plan.md)
->
-> **说明**：后端主体判断仍以 2026-07-10 代码实勘和 2026-07-24 配置中心专项为准；
-> 前端状态已按 2026-07-26 Phase 1–8 实现与实测结果回写。旧版
-> `development-status.md` / `implementation-backlog.md` 的部分结论仍可能滞后。
+# Nebula 全栈当前实现状态分析
 
----
+> 审查日期：2026-08-01
+> 后端基线：`nebula` / `development` / `3d35d13ad23feb4ce367585b77de90094f3f2e26`
+> 前端基线：`nebula-studio` / `development` / `5a36a7e09787889607d53ddea65b3e25b98b5397`
+> 范围：代码、构建描述符、运行配置、迁移、测试清单及仓库内状态文档。本文不以独立的 PostgreSQL 数据平台方案作为实现证据。
 
-## 一、总体完成度矩阵
+## 1. 审查方法与结论口径
 
-### 1.1 后端（nebula）
+本次审查遵循以下证据优先级：
 
-约 **1066** 个 Java 源文件（camel 300 / security 140 / plugin 97 / capability 77 / system 64 / governance 52 / runtime 52 / database 53 等）。
+1. 可执行源码、`pom.xml`、`package.json`、工作区清单；
+2. 应用配置、Flyway 迁移、自动配置注册和测试配置；
+3. 仓库内 `development-status.md`、`implementation-backlog.md`、测试文档；
+4. 历史规划和已完成阶段说明。
 
-| 层级         | 模块域                                      | 模块数 | 已完成 | 部分实现 | 待实现/空壳 | 说明                                                           |
-| ------------ | ------------------------------------------- | ------ | ------ | -------- | ----------- | -------------------------------------------------------------- |
-| 基础         | tools/bom                                   | 2      | 2      | 0        | 0           | 纯工具库 + 版本管理                                            |
-| 运行时       | runtime                                     | 6      | 2      | 3        | 1           | core 完整；context/lifecycle/extension 骨架                    |
-| 数据与连接   | database/integration                        | 12     | 6      | 5        | 1           | PG/MySQL 元数据可用；S3/Kafka/Mail 有真实客户端；Oracle 空     |
-| 能力层       | capability                                  | 9      | 4      | 4        | 1           | cache/lock/storage/log/encrypt 可用；message 默认内存；WS 单机 |
-| 安全与租户   | security/tenant                             | 13     | 5      | 6        | 2           | JWT/OAuth/RBAC 可用；租户拦截器弱（不改写 SQL）                |
-| 平台核心模型 | resource/governance/release/version-control | 17     | 3      | 9        | 5           | API 链已串；**Deploy 仅打日志**，非生产闭环                    |
-| 平台能力域   | config/task/cluster/subscribe               | 22     | 5      | 11       | 6           | Cron/Trigger 可用；DAG/分片未接入执行                          |
-| 插件平台     | plugin                                      | 7      | 5      | 2        | 0           | PF4J 主链路、真实 Maven 下载、统一 descriptor 与版本冲突检测已落地 |
-| Camel集成    | camel                                       | 22     | 12     | 8        | 2           | Console/Executor 可演示；CDC 有 Debezium 但易回落模拟          |
-| 系统与业务   | system/modules                              | 12     | 5      | 5        | 2           | user/config/file 可用；organization CRUD 有，租户绑定未齐      |
-| 平台应用     | platform                                    | 2      | 1      | 1        | 0           | platform-console 依赖聚合 + OpenAPI；非仅 Health               |
-| 演示应用     | demos                                       | 6      | 5      | 1        | 0           | demo-camel-console/executor 为主                               |
+“存在接口、类或页面”只证明结构已落地；只有应用启动、目标测试和端到端验收通过后，才标记为运行闭环。此次文档审查未重新执行后端三应用真实栈，因此 2026-07-26 记录的 `platform-console` 启动失败应视为历史阻塞和当前待复验关口。当前源码已有创建 `ConfigService` 的候选装配，但既不能据此断言仍会失败，也不能假定已经修复。
 
-**后端结论：**
+## 2. 仓库快照
 
-- **可演示主线**：登录 → 租户 → 接口/订阅 → Gateway 调用 → 监控/治理 → 插件管理（仍以 demo-camel-console :8080 + executor :8081 为主）
-- **平台管理入口**：`platform-console` 已通过 starter 依赖聚合 system/resource/governance/release/version/task 等 REST，并暴露 SpringDoc OpenAPI（`scanBasePackages=com.lh`）
-- **平台闭环未真正贯通**：Resource → Governance → Version → Release 的进程内 API/状态机已存在，但 `LocalDeployTarget` 仅日志，**无真实 Runtime 部署**
-- **文档漂移**：`implementation-backlog.md` 仍写「CDC 仅 Simulated」「console 仅 Health」——均已过时；同时旧版本分析把多项标成「已完成」也偏高
+| 项目 | `nebula` | `nebula-studio` |
+| --- | --- | --- |
+| 分支 | `development` | `development` |
+| 审查时工作树 | 干净 | 干净 |
+| 主要语言 | Java、SQL、YAML | TypeScript、Vue、CSS |
+| 代码规模快照 | 1,141 个 `src/main` Java 文件、57 个 `src/test` Java 文件 | 962 个 Git 跟踪文件、38 个 `package.json` |
+| 构建体系 | Maven 多模块 | Vite+（`vp`）+ pnpm workspace |
+| 生产入口 | 3 个 Spring Boot 平台应用 | Web Shell + Electron + 5 个 renderer |
 
-### 1.2 前端（nebula-studio）
+后端根 Reactor 聚合 22 个顶层条目（含 `demos`），主要领域为 runtime、resource、governance、release、version-control、plugin、integration、database、capability、config、task、tenant、security、cluster、subscribe、camel、system、modules 和 platform。前端工作区包含 7 个应用清单、10 个 core 包、5 个 editor 包、3 个 UI 包及其他 contracts/styles/types/tooling 包。
 
-| 层次       | 包域                               | 数量 | 状态     | 说明                                                                                                   |
-| ---------- | ---------------------------------- | ---- | -------- | ------------------------------------------------------------------------------------------------------ |
-| 应用入口   | apps/web, apps/electron            | 2    | 可用     | Web shell + Electron 双入口                                                                            |
-| 子应用     | apps/sub-web/\*                    | 5    | 可用     | integration / settings / login / docs / frontend；多数有 README                                        |
-| 核心包     | packages/core/\*                   | 10   | 可用     | api-client、app-shell、auth、runtime、shell、sse-events、tenant 均有实现                               |
-| UI包       | packages/ui/\*                     | 3    | 可用     | nebula-ui、nebula-layout、nebula-agent；编辑器实现与重依赖已移出基础 UI                                  |
-| 编辑包     | packages/editors/\*                | 5    | 可用     | code-editor 已补齐异步 Monaco Provider、导出、单测和 Bundle Budget；基础 UI 不再承载编辑器依赖          |
-| 功能包     | packages/features/\*               | 1    | 可用     | 当前仅保留真实复用的 use-confirm；其余候选能力继续按复用证据提取                                        |
-| 基础设施   | internal/\*、tools/\*              | ~5   | 可用     | `defineNebulaConfig` + `standardApiProxy` 已收敛                                                       |
-| 类型与契约 | packages/contracts、packages/types | 2    | 增量采用 | `generate:contracts` + 离线 openapi.json 已有；Auth/Plugin 经 facade 采用，Integration/System 待迁移     |
+## 3. 总体判断
 
-**前端结论：**
+| 领域 | 当前判断 | 关键事实 |
+| --- | --- | --- |
+| 后端模块结构 | 已成型 | 根 Reactor、各领域 starter、三平台应用和 demo 均存在 |
+| 平台运行闭环 | 未验收 | Resource/Governance/Version/Release API 有实现，但默认 `LocalDeployTarget` 只记录日志 |
+| Camel 集成 | 可联调、未完全生产化 | Console/Executor、Gateway、POLLING、DAG、监控和 PostgreSQL Debezium 路径存在 |
+| 配置体系 | 核心能力已实现，组合启动待复验 | basic/center、快照、失败策略、刷新和健康检查有代码；最后一次真实栈在 `ConfigService` 装配处失败 |
+| 安全与租户 | 基础能力可用，隔离未闭环 | JWT/Session/RBAC 已装配；OAuth2 是未进入现行平台应用的可选模块；租户拦截器只检查上下文，不改写 SQL |
+| 插件平台 | 主链路可用 | PF4J 单一生产链路、真实 Maven 下载/搜索、SHA-256、冲突检测和平台 REST 已落地 |
+| 前端架构 | 基础重构完成 | Web/Electron 共享 manifest、preload capability、认证、运行时和 API client |
+| 前端业务体验 | 主要界面已落地，真实数据闭环未证明 | Portal/Provider/Admin、Settings、Docs、AuthFlow 均有实现；真实栈仍受后端启动阻塞 |
+| 测试基础设施 | 已建立 | Playwright 配置实际枚举 24 项测试，分为 mock、experience、real-stack、electron 四组 |
 
-- Monorepo 结构成熟（Vite+ / pnpm / Vue3 / TypeScript / Tailwind4）
-- Shell 嵌入子应用架构清晰：`app-shell`（SDK）与 `shell`（UI 容器）职责已拆分
-- Phase 1–8 已完成配置/契约硬化、全局体验基线、Shell/Auth、资源门户、Settings、
-  Docs、编辑器治理和四类 Playwright 验收基础设施
-- **剩余核心不足**：生成契约仍需扩大业务采用率，正式 feature 提取仍有限；
-  real-stack 已能构建、启动、留存分域日志和校验契约，但最终通过被后端
-  `platform-console` 的 `ConfigService` Bean 装配缺口阻塞
+## 4. 后端实现分析
 
----
+### 4.1 技术基线
 
-## 二、后端缺陷与优化方向
+版本统一定义在 `../nebula/nebula-bom/pom.xml`：
 
-### B-1. 平台核心闭环未真正贯通（P0）[部分实现]
+| 类别 | 版本/实现 |
+| --- | --- |
+| Java | 25 |
+| Spring Boot | 4.1.0 |
+| Apache Camel | 4.20.0 |
+| MyBatis / MyBatis-Plus | 3.5.16 / 3.5.16 |
+| PostgreSQL / MySQL Driver | 42.7.2 / 9.3.0 |
+| Flyway | 10.21.0 |
+| Debezium | 3.0.7.Final |
+| PF4J | 3.15.0 |
+| JJWT | 0.13.0 |
+| AWS S3 SDK | 2.45.1 |
+| Redisson | 3.38.1 |
 
-**现状**：Resource / Governance / Version / Release 均有 Entity + Service + REST；协调器可串起申请 → 快照 → 审批 → 流水线状态翻转。
+### 4.2 运行拓扑
 
-**仍缺**：
+当前正式 Reactor 中有三个平台应用：
 
-- `LocalDeployTarget.deploy/rollback` **仅打日志**，不激活 Route/Plugin/Task
-- `ResourceTypeRegistrar` 无各域实现类；Route/Plugin/Task 未自动注册为 Resource
-- Governance audit 多为日志；policy 极薄
-- Version diff 仅为字符串相等摘要，无结构化差异
+| 应用 | 端口 | 职责 | 状态口径 |
+| --- | --- | --- | --- |
+| `platform-console` | 8090 | system、resource、governance、config、version、release、task、plugin 等管理 API 与 OpenAPI | 模块存在；最后记录的真实启动未通过 |
+| `platform-integration` | 8080 | Camel 定义面、认证、租户、订阅、治理 | 生产装配入口，需与其他两应用联合验收 |
+| `platform-integration-executor` | 8081 | Gateway、Route、DAG、任务与执行监控 | 生产执行面，需联合验收 |
 
-**代码入口**：
+`nebula-platform/platform-admin` 仍有被 Git 跟踪的源码和 POM，但已从 `nebula-platform/pom.xml` 的 `<modules>` 中移除，不属于当前 Reactor。文档不得再把它列为活动应用；其残留应后续归档或删除。
 
-- `nebula/nebula-resource/resource-registry` — `PersistentResourceRegistry`
-- `nebula/nebula-governance/governance-request` — `GovernanceRequestCoordinator`、`DefaultGovernanceService`
-- `nebula/nebula-release/release-manager` — `DefaultReleaseManager`、`LocalDeployTarget`
-- `nebula/nebula-version-control/version-core` — `PersistentVersionService`
+`demos/demo-camel-console` 和 `demos/demo-camel-executor` 是演示组合，不再作为目标生产入口。
 
-**优化方向**：
+### 4.3 已有可靠实现
 
-1. 实现真实 DeployTarget（对接 Camel Runtime / PluginManager / Task 激活）
-2. 各域实现 ResourceTypeRegistrar，统一资源注册
-3. Audit 持久化 + Policy 规则引擎补强
-4. 结构化 VersionDiff API，供前端 version-diff 包消费
-5. 验收测试：至少一种 Resource 走通 Draft → Version → Approval → **真实 Deploy** → Runtime
+#### 数据与基础设施
 
----
+- `nebula-database` 提供多数据源、MyBatis、JPA、Flyway 约定及 PostgreSQL/MySQL 元数据适配。
+- `nebula-integration` 已包含 Redis、Kafka、S3 和 Mail 客户端自动配置；S3/Kafka/Mail 有健康检查。
+- PostgreSQL 迁移脚本覆盖 platform、camel、resource、governance、task、cluster 等领域，正式应用通过 Maven 资源复制聚合共享迁移。
+- `capability-cache`、`capability-lock`、`capability-storage`、`capability-log`、`capability-encrypt` 有实际实现。
 
-### B-2. CDC 订阅默认仍易回落模拟（P0）[部分实现]
+#### 插件平台
 
-**现状**：`nebula-camel-subscribe` 已有 `DebeziumCdcConnector` / `DebeziumEngineFactory` / `DebeziumCdcRuntimeLauncher` / `CdcOffsetManager`，依赖 `debezium-embedded` + postgres connector。
+- `SpringBootPluginManager` / PF4J 是唯一生产加载链路。
+- `MavenRemotePluginRepository` 使用 Java HTTP Client 获取元数据与 JAR，执行格式、内容类型和哈希校验；当前仍缺专门覆盖 HTTP 下载/失败分支的仓库测试。
+- `LocalPluginRepository`、`PluginInstallService` 支持本地索引、安全路径和版本冲突处理。
+- 平台 descriptor 与 Camel 领域 descriptor 已分层；内置 HTTP/MySQL/PostgreSQL 插件声明 Connector 能力。
 
-**仍缺**：
+#### Camel 集成
 
-- `TableSubscriberRouteBuilder` 在 Debezium 未启用时走内嵌 `SimulatedCdcProcessor`
-- 引擎失败时 `startSimulatedFallback` 仍造假数据
-- 与 `nebula-subscribe` 平台模型对齐未验证；无 MySQL CDC connector
+- Console 和 Executor 的 REST、Gateway、DAG/任务执行、租户授权、订阅、监控和治理代码均存在。
+- POLLING 使用真实 JDBC 查询并产生订阅事件。
+- CDC 可启动 Debezium Embedded PostgreSQL connector；模拟降级不再是静默行为，必须显式设置 `allowSimulatedFallback=true`，否则 `CdcProductionGuard` 抛出异常。
+- Gateway 已包含权限与治理过滤，监控侧有调用日志、拓扑和进程内指标。
 
-**优化方向**：
+#### 配置体系
 
-1. 生产配置强制真实 Debezium，禁止静默 fallback（或明确开关 + 告警）
-2. 完善 offset 持久化与断连重连
-3. 对齐订阅事件格式到平台 subscribe 模型
-4. 按需增加 MySQL connector
+- `nebula-config` 已拆分 core、storage、center API、Config Server、Nacos、runtime、autoconfigure 和 starter。
+- 支持 basic JDBC 启动期加载、center provider、文件快照、`fail-fast/use-snapshot/ignore`、可刷新前缀和健康状态。
+- `ConfigAutoConfiguration` 在存在 `ConfigRepository` 时创建 `ConfigService`，默认仓库为内存，JDBC 仓库受 `nebula.config.storage=jdbc` 和 `JdbcTemplate` 条件控制。
 
----
+### 4.4 关键缺口
 
-### B-3. 任务调度：Cron 可用，DAG/分片未接线（P1）[部分实现]
+#### P0：Platform 启动与真实栈
 
-**现状**：`TaskScheduler` + `CronScheduleSupport`（cron-utils）、`TriggerManager`、`TaskScheduleBridge` 可用；platform-console 依赖 `task-starter`。
+最新仓库文档记录的 2026-07-26 实跑结果为：Maven Reactor 构建和 PostgreSQL 连接成功，但 `platform-console` 创建 `ConfigRestController` 时缺少 `ConfigService` Bean。当前源码中 `ConfigAutoConfiguration.nebulaConfigService(...)` 已定义候选 Bean，starter 也依赖 autoconfigure；但缺少当前 HEAD 的 ApplicationContext 冒烟和启动结果，因此实际状态只能记为“候选修复存在、尚待复验”。
 
-**仍缺**：
+证据：
 
-- `DependencyGraph`（task-dependency）有单测，**未接入执行编排**
-- `TaskShardManager`（task-cluster）算法存在，**未接入调度执行**
-- 与 Camel Executor 手工触发路径并存
+- `../nebula/nebula-platform/platform-console/application.yml` 使用 `nebula.config.storage=jdbc`；
+- `../nebula/nebula-config/config-autoconfigure/.../ConfigAutoConfiguration.java` 的 JDBC 仓库依赖 `JdbcTemplate` 条件；
+- `../nebula/nebula-config/config-starter/.../ConfigStarterAutoConfiguration.java` 本身为空壳聚合自动配置；
+- `../nebula/docs/development-status.md` 与前端 `docs/testing.md` 均记录相同阻塞。
 
-**优化方向**：
+#### P0：Release 未驱动真实 Runtime
 
-1. 将 DAG 依赖解析接入 Trigger/Scheduler 主路径
-2. 分片与 cluster 活跃节点联动，故障转移
-3. 统一调度 REST，收敛 Executor 手工触发入口
+`LocalDeployTarget.deploy()` 与 `rollback()` 只记录日志，没有激活 Camel Route、插件或任务。因此“申请 → 审批 → 版本 → 发布”只能视为服务/API 链存在，不能视为运行时闭环。
 
----
+#### P1：租户隔离依赖 Mapper 自律
 
-### B-4. 组织与租户：CRUD 有，SQL 隔离弱（P1）[部分实现]
+`MyBatisTenantInterceptor` 只检查查询 SQL 是否包含 `tenant_id` 并输出 trace，不注入条件，也不阻止缺少租户条件的 SQL。所有 Mapper 必须显式正确处理租户条件，当前无法形成统一的强制隔离保证。
 
-**现状**：组织树 CRUD + 策略 REST 存在；`TenantContextHolder` / `TenantContextFilter` / `MyBatisTenantInterceptor` 均有类。
+#### P1：任务与集群仍缺分布式闭环
 
-**仍缺**：
+Cron、触发器、任务实例、重试、节点心跳和分片算法已有实现；依赖 DAG、共享注册表、分布式唯一触发和故障接管仍未完成端到端验收。
 
-- `MyBatisTenantInterceptor` **不改写 SQL**，仅检查上下文 / 打 trace
-- 租户仓仍有 `InMemoryTenantRepository` 路径
-- 组织与租户/授权深度绑定、前端 OrgSwitcher 全链路未齐
+#### P1：认证增强尚未实现
 
-**优化方向**：
+后端现行平台已装配 JWT、Session、RBAC 和组织选择；仓库虽有 OAuth2 Authorization Server 模块，但 `security-starter` 和三个正式平台 POM 均未引入它，不能写成“平台默认启用 OAuth2”。同时，没有代码证据表明 MFA、TOTP、密码自助恢复、预认证事务和跨节点全会话撤销已实现。这些能力只能列为后续计划，不能沿用旧文档中的目标 API 当作现状。
 
-1. 拦截器真正注入 `tenant_id` 条件（或等价多租户方案）
-2. 持久化租户仓 + 组织-租户绑定 REST
-3. 前端租户切换后强制刷新各子应用数据
+另外，当前 Token 过滤器仍接受查询参数 Token，可能把凭据暴露到 URL/日志；撤销集合为进程内状态。CORS 默认策略也需要在生产 Profile 中按明确 Origin 收紧。
 
----
+#### P2：生产化能力仍不足
 
-### B-5. platform-console 已聚合，统一门面仍弱（P1）[基本可用]
+- Kafka 统一发布已存在，但消费、重试/DLQ、幂等和自动配置优先级仍需验证。
+- 通知包含站内、Webhook 和 Mail 通道，但记录/归档仍偏内存。
+- WebSocket、集群发现、Route Trace/指标多为单进程或内存状态。
+- CDC 仍可在明确授权时运行模拟模式；offset、单活与接管需要生产化。
+- 插件缺少制品签名、可信供应商和依赖约束求解。
+- 文件存储同时存在本地与 S3 路径，但按 `storageType` 选择实现的装配行为仍需专项测试。
+- 平台开发配置中仍有被 Git 跟踪的明文敏感配置项；生产凭据必须迁出仓库并轮换，文档和日志不得复制其值。
 
-**现状**：依赖聚合 system / governance / resource / release / version / task / subscribe / security / integrations / capabilities；SpringDoc + `SwaggerConfig`；`scanBasePackages=com.lh`。
+## 5. 前端实现分析
 
-**仍缺**：
+### 5.1 技术基线
 
-- 无统一 `/api/platform/**` 业务门面（靠组件扫描暴露各模块路径）
-- 健康检查 modules 状态硬编码 `"UP"`
-- 前端默认基址与 demo :8080 并存，切换策略需明确
+版本来自 `../nebula-studio/pnpm-workspace.yaml` 与根 `package.json`：
 
-**优化方向**：
+| 类别 | 版本/实现 |
+| --- | --- |
+| Node.js | `>=22.12.0` |
+| 包管理声明 | pnpm 11.5.1；日常命令统一经 Vite+ `vp` |
+| Vite+ / Vite | 0.2.6 / 8.1.3 |
+| Vue / Vue Router | 3.5.35 / 4.6.4 |
+| TypeScript | 6.0.3 |
+| Electron / electron-vite | 43.x / 5.x |
+| Tailwind CSS | 4.3.3 |
+| Vitest / Playwright | 4.1.10 / 1.62.0 |
 
-1. 明确 studio 默认 API 基址切到 platform-console
-2. 真实健康聚合（各 starter 探活）
-3. 过渡期保持 demo-camel-console 可启动
+### 5.2 当前应用与共享层
 
----
+| 层级 | 当前实现 |
+| --- | --- |
+| 宿主 | `apps/web` Web Shell；`apps/electron` Electron 主进程与统一 renderer 引导 |
+| Renderer | frontend、integration、settings、login、docs |
+| 配置单源 | `configs/windows.json` 定义窗口、API base/target、角色、help key 和 preload capability |
+| Core | api-client、app-shell、auth/auth-provider、runtime、shell、tenant、sse-events、msw 等 |
+| UI | nebula-ui、nebula-layout、nebula-agent、styles |
+| Editors | code、DAG、flow、integration panel、low-code form |
+| Contracts | 手写领域契约 + OpenAPI 生成快照/facade |
+| 正式共享 feature | 只有 `packages/features/use-confirm` |
 
-### B-6. 消息与实时通道：有实现，默认偏单机（P2）[部分实现]
+Electron 与 Web 都消费生成的窗口配置。Electron preload 由统一入口按 capability 组装，子应用通过 `bootMicroApp` 适配 standalone、Web embed 和 Electron 模式。认证会话由 `auth-provider` 统一维护，API client 注入 token 和租户头并处理 401。
 
-| 模块         | 现状                                                              | 缺口                                                          |
-| ------------ | ----------------------------------------------------------------- | ------------------------------------------------------------- |
-| message      | `InMemoryMessagePublisher` 默认；`KafkaMessagePublisher` 条件装配 | 默认内存；与 InMemory 的 `@ConditionalOnMissingBean` 竞态风险 |
-| notification | 内存服务 + Webhook + Mail channel                                 | 无短信；存档仍内存                                            |
-| websocket    | 会话/鉴权/路由/心跳较完整                                         | 离线缓冲内存；无集群广播                                      |
+### 5.3 已完成的前端重构
 
-**优化方向**：
+- Web/Electron 窗口与 API target 单源化；生成结果有一致性检查脚本。
+- `app-shell` 运行时 SDK 与 `nebula-shell` UI 容器已分离。
+- 统一 preload、统一微应用启动、统一认证与租户基础能力已建立。
+- Integration 已区分 Portal、Provider、Admin 三类界面，并实现资源目录、详情、申请、我的资源/订阅及管理页面。
+- Settings 已分为个人、组织、平台入口；Docs 已分产品帮助与开发者参考。
+- Login 前端有 credentials、organization、mfa、recovery、success、failure 显式状态模型。
+- code-editor 具备独立入口、异步 Monaco provider、单测和 bundle budget；编辑器依赖不再放在基础 UI 包中。
+- Playwright 四个 project 的配置真实存在；本次执行 `vp exec playwright test --list` 枚举出 24 项测试（12 mock、10 experience、1 real-stack、1 electron）。
 
-1. 默认生产配置切 Kafka；理清 Bean 条件优先级
-2. WebSocket 集群广播 + 持久离线消息
-3. 与 subscribe SSE 统一事件模型
+### 5.4 前端剩余问题
 
----
+#### 生成契约采用不完整
 
-### B-7. 多数据库适配：PG + MySQL，Oracle 空（P2）[部分实现]
+`generate:contracts`、离线 OpenAPI 和 generated facade 已存在，但业务仍使用 `contracts/auth`、`contracts/system`、`contracts/integration` 等兼容手写契约。新增 API 应只通过 facade 暴露，存量需逐域迁移并在 CI 校验差异。
 
-**现状**：`PostgresqlMetadataProvider`、`MysqlMetadataProvider` 均有；platform-console 当前只依赖 postgres adapter。
+#### feature 边界仍主要留在应用内部
 
-**仍缺**：Oracle / SQL Server 适配器；非 PG 的 Flyway schema 清理器。
+Integration 内已经有 `src/features/plugin-catalog`、`resource-catalog`、`subscription` 等应用内 feature，但 `packages/features` 只有 `use-confirm`。旧计划中声称已创建多个共享 feature 包是不准确的；只有出现多个消费者、稳定 API 和独立测试价值时才应提升为共享包。
 
-**优化方向**：按需实现 Oracle；console 可配置引入 mysql adapter；前端数据源页展示多库类型。
+#### AuthFlow UI 超前于后端契约
 
----
+MFA 与恢复步骤是前端状态和交互容器，后端尚无对应事务、验证与恢复 API。前端必须保持不可伪造成功，并在后端契约落地后再接真实提交。
 
-### B-8. 插件平台与远程仓库（P3）[核心改造已完成 / 治理增强可选]
+#### Mock 与真实栈边界
 
-**现状**（2026-07-26）：PF4J `SpringBootPluginManager` 已成为唯一生产加载链路；远程 Maven 仓库支持真实 HTTP 下载、版本枚举、搜索、JAR/Content-Type 校验与 SHA-256；本地仓库支持安全路径、版本冲突检测；平台 REST 已接真实仓库服务。
+MSW 包提供 auth、integration、settings handlers，Mock E2E 适合快速回归。`real-stack` project 明确不允许网络 Mock，但最后一次运行在 Platform Console 启动阶段停止，尚未证明登录、资源申请、插件、订阅、Gateway、Monitor 和在线契约的完整真实链路。
 
-通用 `NebulaPluginDescriptor` 与 Camel 领域 descriptor 已在加载前执行 schema、身份、版本、领域入口及 Connector 声明/运行时一致性校验。旧 `plugin-spi/runtime/manager/loader` 第二套实验链路已移除。
+#### 其他增量治理
 
-**仍可增强**：制品签名/可信供应商校验、私有仓库专用搜索索引、平台兼容范围与依赖约束求解、前端插件市场完整对接。
+- Integration 仍是最大业务子应用，页面组合、API、mapper 和 feature 边界需要继续收敛。
+- Settings 的实体列表、筛选、批量操作和详情抽屉尚未完全统一。
+- 共享类型与本地 `env.d.ts` 仍可继续集中。
+- Electron 自动更新模块仍是可插拔占位，不应标记为可发布更新链路。
 
----
+## 6. 前后端契约与运行边界
 
-### B-9. 可观测性：monitor 较实，OTel 未接入（P3）[部分实现]
+`configs/windows.json` 和 Integration proxy 定义三后端目标：
 
-**现状**：`camel-monitor` 有调用日志、拓扑、限流/熔断/白名单 REST；`camel-observability` 为进程内 `RouteTracer`（内存 Map）。
+| 路径域 | 目标 |
+| --- | --- |
+| `/api/platform`、`/api/system`、governance/version/release | `platform-console:8090` |
+| 默认 `/api`、认证、租户、订阅、Camel Console | `platform-integration`/兼容 Console `:8080` |
+| `/api/executor`、Gateway、Executor demo | `platform-integration-executor`/兼容 Executor `:8081` |
 
-**仍缺**：无 OpenTelemetry / Micrometer 依赖；observability 与 monitor 数据模型未统一。
+当前是三进程过渡架构，不应再写成“只启动 platform-console + executor”。正式目标是三平台应用联合运行，demo 仅保留示例用途。
 
-**优化方向**：可选 OTel 接入；统一拓扑数据存储与前端还原 API。
+## 7. 当前优先级
 
----
+| 优先级 | 工作项 | 完成定义 |
+| --- | --- | --- |
+| P0 | 恢复 Platform Console 启动 | ApplicationContext 冒烟通过，三应用健康检查通过 |
+| P0 | 打通真实栈 | `vp run test:e2e:real` 无 Mock 通过，在线契约无漂移 |
+| P0 | 真实 DeployTarget | 至少一种资源发布后在 Runtime 生效并可回滚 |
+| P1 | 租户强隔离 | 查询/写入都由统一机制强制 tenant 条件，并有跨租户负向测试 |
+| P1 | CDC/任务/集群生产化 | 无未授权模拟、共享 offset、唯一调度和故障接管可验证 |
+| P1 | 契约消费 | 新 API 100% 经 generated facade；存量按域迁移 |
+| P1 | 后端 MFA/恢复 | 先实现安全状态机和契约，再启用前端真实步骤 |
+| P2 | 消息、通知、WebSocket、观测 | 跨实例投递、持久化、DLQ 和指标/Trace 后端可验证 |
+| P2 | 前端边界治理 | Integration 应用内 feature 成熟后按真实复用提升共享包 |
+| P3 | 插件供应链与多库 | 签名/信任链、依赖求解和按需方言扩展 |
 
-### B-10. Integration 连接层已有真实客户端（P3）[部分实现]
+## 8. 风险结论
 
-**现状**（相对 6 月 backlog「仅骨架」已前进）：
+1. **最大交付风险不是缺少模块，而是“结构存在”被误写成“运行通过”。**
+2. **Platform Console 启动是所有真实栈验收的前置关口。**
+3. **默认日志 DeployTarget、非强制租户 SQL 和可显式启用的 CDC 模拟模式都不能进入生产完成口径。**
+4. **前端重构已完成大部分基础设施，下一阶段应优先消除真实契约与真实数据缺口，而不是继续目录搬迁。**
+5. **插件远程仓库已是真实实现，旧文档中的 placeholder 结论必须删除；剩余问题是供应链治理。**
 
-- S3：真实 `S3Client` + HealthIndicator
-- Kafka：真实 `KafkaTemplate` / ConsumerFactory + health
-- Mail：真实 `JavaMailSender` + `NebulaMailHelper`
+## 9. 关联文档
 
-**仍缺**：与 capability-storage / message 的深度整合与生产运维面。
-
----
-
-### B-11. 集群发现偏单机内存（P2）[部分实现]
-
-**现状**：`ClusterDiscoveryService` 内存注册/心跳；`DistributedLockManager` 注释标明单机内存；与 `task-cluster.TaskShardManager` 存在两套分片概念。
-
-**优化方向**：Redis 分布式锁；K8s/Consul 发现；与 task 执行闭环；收敛重复分片实现。
-
----
-
-### B-12. nebula-config 配置中心重构（P1）[✅ 2026-07-25 已完成]
-
-> 以下内容记录 2026-07-24 重构前基线。2026-07-25 已完成 basic/center 双模式、启动期 EnvironmentPostProcessor、Spring Cloud Config/Nacos provider、版本监听、文件快照、三种失败策略、白名单刷新及健康检查；实现与用法见 `nebula/docs/config/index.md`。
-
-**重构前现状**：`nebula-config` 更接近“动态配置表 + 本地事件”的基础能力，而不是配置中心客户端或配置中心服务端。
-
-- `config-core` 仅提供 `ConfigService.save/find/delete` 与 `ConfigItem` 模型。
-- `config-storage` 提供 `InMemoryConfigRepository` 与 `JdbcConfigRepository`；JDBC 通过 `nebula.config.storage=jdbc` 从 `nebula_config` 表读写配置。
-- `config-autoconfigure` 默认装配内存仓库、`DefaultConfigService`、CORS/CSP 过滤器。
-- `config-runtime` 的 `ConfigRefreshListener` 目前只记录变更日志；`CorsPolicyManager` / `ContentSecurityPolicyManager` 是偏 Web 安全策略的运行时配置。
-- `nebula-module-config`、`nebula-system-config` 与 `nebula-config` 职责交叠：前者偏业务配置管理 REST，后者偏底层动态配置表；文档中“配置中心 REST”容易误导。
-
-**核心问题**：
-
-1. **不是 Spring 启动期配置源**：没有接入 Spring Boot ConfigData / EnvironmentPostProcessor，不能在 Bean 创建前稳定注入外部配置。
-2. **没有配置中心语义**：缺少 application/profile/label/namespace/group/dataId、版本、快照、灰度、监听、回滚、权限、审计等核心模型。
-3. **启动顺序被业务化管控**：为了先拿数据源、再查配置表、再装配业务 Bean，调用方需要人为控制顺序；这说明配置加载职责没有进入 Spring 配置加载阶段。
-4. **远端配置中心缺位**：无 Spring Cloud Config Server、Nacos、Apollo、Consul、Etcd 等 provider 抽象与适配器。
-5. **生产默认不安全**：默认内存仓库会掩盖配置丢失；远端失败策略、缓存快照、超时、重试、降级边界均未定义。
-
-**优化方向：双模式配置体系**：
-
-1. **基础模式（basic）**：保持当前流程，但收敛为明确的 `nebula.config.mode=basic`。由架构指定 `DataSource` / `JdbcTemplate`，从指定表加载配置；适合单体、演示、轻量部署。要求通过 Spring Boot 启动期加载入口注入 Environment，而不是业务 Bean 启动后再查表。
-2. **中心模式（center）**：`nebula.config.mode=center`，由 `nebula.config.center.provider` 选择远端适配器，首批支持 `spring-cloud-config` 与 `nacos`，后续可扩展 Apollo/Consul/Etcd。配置中心负责启动期拉取、运行期监听刷新、本地快照缓存与失败策略。
-3. **统一抽象**：新增 `ConfigSource` / `ConfigProvider` / `ConfigWatcher` / `ConfigSnapshotRepository` / `ConfigMergeStrategy`，屏蔽 JDBC 与远端中心差异。
-4. **优先级合并**：建议顺序为 `commandLine > env/system > center/basic external > application.yml > defaults`；多租户/应用维度按 `global -> application -> tenant -> instance` 叠加。
-5. **运行期刷新**：配置变更发布统一 `NebulaConfigChangedEvent`，桥接 Spring Cloud Bus / Nacos Listener；只刷新标记为 refreshable 的配置，禁止数据库连接池等 bootstrap 配置无边界热刷。
-6. **职责拆分**：`nebula-config` 负责平台配置加载与刷新；`nebula-module-config` 负责业务配置管理 UI/API；`nebula-system-config` 作为系统配置领域模型，不再宣称“配置中心”。
-
-**建议落地关口**：
-
-- G8a：basic 模式下，应用启动前从指定表加载配置并可覆盖 `application.yml`。
-- G8b：center 模式下，Spring Cloud Config Server 与 Nacos 至少各完成启动拉取 + 运行期变更监听。
-- G8c：配置中心不可用时按 `fail-fast` / `use-snapshot` / `ignore` 策略表现一致，并有启动日志与健康检查。
-- G8d：删除旧的顺序管控要求，调用方只声明模式与参数，不再手工编排配置加载顺序。
-
----
-
-## 三、前端缺陷与优化方向
-
-### F-1. 子应用配置重复（P2）[基本收敛]
-
-**现状**：`internal/vite` 提供 `defineNebulaConfig` + `standardApiProxy`；各子应用 `vite.config.ts` 已是薄包装（约 20–30 行）。
-
-**仍缺**：薄配置仍有少量重复；integration 保留自定义 SSE proxy（合理）。
-Docs README 与 Monorepo 应用索引已在前端 Phase 6 补齐。
-
-**优化方向**：可选 `createSubWebViteConfig({ root, proxy })` 进一步去重。
-
----
-
-### F-2. 契约管道已建，业务未消费（P1）[管道完成 / 采用缺口]
-
-**现状**：根脚本 `generate:contracts` → `packages/contracts/generated/platform-api.ts`；离线 `openapi.json` 存在。
-
-**仍缺**：应用仍只 import 手写 `@nebula-studio/contracts/{auth,system,integration}`；生成类型基本无人引用。
-
-**优化方向**：
-
-1. 迁移业务代码到 generated types，或生成覆盖手写目录
-2. CI 校验 OpenAPI 变更与 contracts 同步
-3. Breaking Change 检测
-
----
-
-### F-3. 跨子应用状态共享（P2）[基本完成]
-
-**现状**：`shellEventBus`（tenant:changed / auth:logout / theme:changed）；`bootMicroApp` 统一注入。
-
-**现状更新**：统一 Session、主题、租户与 Shell Host Bridge 已覆盖主要子应用；
-仍需在真实栈恢复后验证组织切换对各业务数据源的失效与刷新行为。
-
-**优化方向**：为组织切换、登出和主题变化补齐跨子应用真实数据失效测试。
-
----
-
-### F-4. Shell 职责边界（P3）[已完成]
-
-`app-shell` = Shell 运行时 SDK；`packages/core/shell` = 应用级 UI 容器。边界已清晰，无需再作为缺陷跟踪。
-
----
-
-### F-5. 子应用独立性参差（P2）[部分完成]
-
-**现状**：多数子应用有 README + 可独立 `vp`/`filter` 启动；MSW handlers 覆盖 auth/settings/integration。
-
-**现状更新**：Docs README、统一微应用启动和主要 Shell 事件接入已完成；
-剩余缺口是各子应用独立运行时的真实后端夹具与一致性回归。
-
----
-
-### F-6. 编辑包边界过大（P2）[已完成]
-
-**现状**：已采用“基础 UI → provider-neutral 编辑器外壳 → 异步 Provider → 业务应用”
-的单向依赖模式。`code-editor` 已补齐标准包入口、类型、测试和 Bundle Budget；
-Monaco 为默认异步 Provider，TipTap 进入独立富文本边界，`nebula-ui` 不再承担编辑器实现。
-
-**后续治理**：新增 Provider 时保持并列适配，禁止编辑器包反向依赖 UI 或业务 feature。
-
----
-
-### F-7. E2E 覆盖不足（P2）[基础设施已完成 / 真实栈阻塞]
-
-**现状**：
-
-- Playwright 已拆分为 `mock-regression`、`experience`、`real-stack`、`electron`
-  四个 project，共枚举 24 项测试；
-- 本地 Mock 12 项、体验/性能 10 项、Electron 1 项通过；
-- Shell/Login/Portal/Admin/Settings/Docs 已有亮暗主题和
-  320/768/1280/1440 px 共 48 张 Windows 视觉基线；
-- CI 已分组运行 Mock、Windows 视觉/性能、Windows Electron，并在手动或定时任务中运行真实栈；
-- real-stack 会构建后端 reactor，拉起 Platform Console、Camel Console、Executor 和 Web，
-  保存分域日志，在线生成契约并执行差异检查。
-
-**仍缺**：真实栈最终验收尚未通过。2026-07-26 实跑时数据库可连接、后端 reactor
-构建成功，但 `platform-console` 创建 `ConfigRestController` 时找不到
-`ConfigService` Bean。修复该后端装配问题后，需继续完成真实登录、插件、订阅、
-Gateway、Monitor 和契约漂移验收。
-
----
-
-### F-8. 类型声明分散（P3）[仍开放]
-
-`packages/types` 有共享 Window/环境桩；各应用仍保留约 10 个本地 `env.d.ts`。
-
----
-
-### F-9. features 包治理（P2）[已收口骨架]
-
-未形成真实复用的 `route-designer`、`subscription-manager`、`version-diff` 和
-`plugin-installer` 骨架已不再作为正式 feature 包保留；当前
-`packages/features` 仅保留有实际消费者的 `use-confirm`。后续只在存在两个以上消费者、
-稳定 API 边界和独立测试价值时提取 feature，避免为目录目标制造空包。
-
----
-
-## 四、前后端协同缺陷与优化方向
-
-### S-1. API 契约自动生成（P0）[管道完成 / 采用缺口]
-
-后端 SpringDoc + 前端 `openapi-typescript` 管道已通；**缺口在消费与 CI 强制同步**（见 F-2）。
-
----
-
-### S-2. 验收测试不对称（P1）[关口已建立 / 后端待恢复]
-
-前端到 platform-console + Camel Console + Executor 的 real-stack 编排、健康检查、
-日志和 Playwright project 已建立。当前关口能在后端启动阶段准确失败，已暴露
-`platform-console` 缺少 `ConfigService` Bean；尚无通过状态的
-Resource→Deploy→Runtime 硬验收。
-
-**优化方向**：先恢复三项后端应用上下文启动，再按 development-plan G5~G10
-跑通共同验收清单；不得通过 Mock 或跳过健康检查把关口标为通过。
-
----
-
-### S-3. 文档同步滞后（P1）
-
-`development-status.md` / `implementation-backlog.md`（2026-06-30）与代码严重脱节；本文已按代码重写，但后端 docs 矩阵尚未同步。
-
-**优化方向**：以本文为基准回写 backlog/status；模块变更同步更新 `nebula/docs/{domain}/`。
-
----
-
-### S-4. 构建与发布流程不统一（P2）
-
-后端 Maven、前端 pnpm/Vite+；缺统一 Docker Compose（platform-console + executor + frontend + PostgreSQL + Redis）。
-
----
-
-## 五、阶段规划与关口（修订）
-
-| 阶段   | 主题                | 后端重点                              | 前端重点                        | 协同重点     | 关口  |
-| ------ | ------------------- | ------------------------------------- | ------------------------------- | ------------ | ----- |
-| Phase1 | 真实闭环 + CDC 硬化 | B-1 真实 Deploy、B-2 禁止静默模拟     | F-2 消费 generated contracts    | S-1/S-2 验收 | G5/G6 |
-| Phase2 | 租户隔离 + 任务接线 | B-4 SQL 隔离、B-3 DAG/分片接入、B-12 配置中心双模式 | F-3 settings 事件、F-5 独立文档 | S-3 文档回写 | G7/G8 |
-| Phase3 | 统一入口 + 实时通道 | B-5 console 默认入口、B-6/B-11 集群化 | F-7 业务 E2E、F-9 features 落地 | S-4 Compose  | G9    |
-| Phase4 | 扩展与完备          | B-7/B-8/B-9/B-10                      | F-6 编辑器拆分、F-8 类型集中    | —            | G10   |
-| Phase5 | 持续优化            | 性能、运维面、多库按需                | 体验与包体积                    | 全链路监控   | —     |
-
----
-
-## 六、关键决策记录
-
-| 决策           | 选项                                        | 推荐                                            |
-| -------------- | ------------------------------------------- | ----------------------------------------------- |
-| CDC 技术选型   | Debezium Embedded / pgoutput / 自研         | Debezium Embedded（代码已引入；需硬化默认路径） |
-| 消息中间件     | Kafka / RabbitMQ / Pulsar                   | Kafka（已有 publisher；默认应切生产配置）       |
-| 分布式追踪     | OpenTelemetry / SkyWalking / Zipkin         | OpenTelemetry（尚未接入）                       |
-| 前端状态管理   | Pinia / VueUse / 自研事件总线               | VueUse + shellEventBus（已落地）                |
-| OpenAPI 生成   | openapi-typescript / swagger-typescript-api | openapi-typescript（管道已有；待业务迁移）      |
-| 多数据库优先级 | MySQL > Oracle > 达梦 > 其他                | MySQL 元数据已有；Oracle 按需                   |
-| 主管理入口     | demo-camel-console / platform-console       | 过渡期双轨；目标切 platform-console             |
-| 配置中心模式   | basic / center                              | 双模式：basic 从指定数据源/表启动期加载；center 对接 Spring Cloud Config Server、Nacos |
-
----
-
-## 七、风险与缓解
-
-| 风险                            | 影响             | 缓解                           |
-| ------------------------------- | ---------------- | ------------------------------ |
-| DeployTarget 长期停留在日志桩   | 平台闭环虚假完成 | Phase1 强制真实部署验收        |
-| Debezium 静默 fallback 到模拟   | 生产误用假数据   | 配置强制 + 启动告警            |
-| 租户拦截器不改 SQL              | 数据串租户       | Phase2 优先硬化                |
-| 契约生成但未消费                | 前后端字段漂移   | CI 强制 diff / 迁移手写 DTO    |
-| Platform 替代 demo 造成回归     | 演示中断         | 过渡期双入口                   |
-| JDK25 + Spring Boot4 生态成熟度 | 依赖兼容         | BOM 锁版本，定期升级验证       |
-| 插件制品仅有哈希、尚无签名信任链 | 供应链可信度不足 | 后续接入签名、可信供应商与密钥轮换 |
-| nebula-config 误当配置中心使用  | 启动顺序被迫人工管控，生产配置能力不足 | Phase2 引入 basic/center 双模式、启动期加载、远端 provider 与失败策略 |
-
----
-
-## 八、检查清单
-
-每次迭代完成后核对：
-
-- [ ] 依赖方向：无下层模块逆向引用
-- [ ] Starter 单一入口：每个域仅一个 `*-starter`
-- [ ] 命名一致：Maven artifactId / Java 根包 / docs 章节三者对齐
-- [ ] 演示可回归：demo-camel-console + demo-camel-executor **与** platform-console 均可启动
-- [ ] 前端可构建：`vp run build` 无报错
-- [ ] API 契约：`generate:contracts` 后业务代码引用 generated（或等价同步）
-- [ ] 平台闭环：至少一种 Resource **真实 Deploy** 到 Runtime（非仅状态翻转）
-- [ ] CDC：生产配置下无 Simulated fallback
-- [ ] 配置中心：basic/center 双模式可验收，且不再要求调用方手工编排配置加载顺序
-- [ ] E2E 关键路径：登录 → 租户 → 接口管理 → Gateway 调用
-- [ ] 文档：变更后同步 `development-status.md` / `implementation-backlog.md`
-
----
-
-## 九、相对旧版分析的主要修正
-
-| 旧版声称（约 2026-07-10 实施轮次） | 代码实勘结论                               |
-| ---------------------------------- | ------------------------------------------ |
-| B-1 平台闭环「已基本贯通」         | API 链有；**Deploy 空壳** → 部分实现       |
-| B-2 CDC「已完成」                  | Debezium 有代码；**模拟仍是默认/回退支路** |
-| B-3 任务调度「已完成」             | Cron/Trigger 可用；**DAG/分片未接线**      |
-| B-4 租户拦截器「已实现」           | 类存在；**不改写 SQL**                     |
-| B-8 远程 Maven「已实现」           | **已完成真实下载、索引/版本查询、哈希与冲突检测；签名信任链待增强** |
-| B-9 Observability「已实现」        | 内存 RouteTracer；**无 OTel**              |
-| F-2 契约「已完成」                 | 管道完成；**业务未消费**                   |
-| backlog「console 仅 Health」       | **已过时** — 依赖聚合 + OpenAPI 已有       |
-| 配置中心 REST「已完成」            | 仅业务/动态配置读写；**nebula-config 尚非配置中心** |
-
----
-
-> 本文档为 workspace 级规划文件，与 nebula `docs/` 下的 development-plan.md、implementation-backlog.md、development-status.md 形成互补。
-> 后端技术细节与分批次计划详见上述文档（需按本文第九节回写同步）。
+- [模块规划](./模块规划.md)：当前模块树与职责边界。
+- [详细开发计划](./nebula-development-detailed-plan.md)：从上述 P0/P1 缺口出发的执行顺序。
+- [前端增量重构计划](./nebula-studio-frontend-refactoring-plan.md)：前端专项状态和剩余工作。
+- [后端开发状态](../nebula/docs/development-status.md) 与 [后端 backlog](../nebula/docs/implementation-backlog.md)：后端单仓库明细。
+- [前端测试](../nebula-studio/docs/testing.md) 与 [后端联调](../nebula-studio/docs/backend-integration.md)：测试拓扑和命令。
