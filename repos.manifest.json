@@ -6,14 +6,29 @@
       "dir": "nebula",
       "workspaceName": "nebula",
       "crgAlias": "nebula",
-      "branch": "development"
+      "branch": "development",
+      "role": "source",
+      "buildGraph": true,
+      "projectId": "LiaoHan5426--nebula"
     },
     "nebula-studio": {
       "url": "https://github.com/LiaoHan5426/nebula-studio.git",
       "dir": "nebula-studio",
       "workspaceName": "nebula-studio",
       "crgAlias": "nebula-studio",
-      "branch": "development"
+      "branch": "development",
+      "role": "source",
+      "buildGraph": true,
+      "projectId": "LiaoHan5426--nebula-studio"
+    },
+    "agent-memory": {
+      "url": "https://github.com/LiaoHan5426/agent-memory.git",
+      "dir": ".knowledge/agent-memory",
+      "workspaceName": "knowledge",
+      "crgAlias": "agent-memory",
+      "branch": "main",
+      "role": "knowledge",
+      "buildGraph": false
     }
   },
   "extraFolders": [

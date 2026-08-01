@@ -16,6 +16,7 @@ nebula-workspace/
 ├── docs/                         # 跨仓库规划与设计
 ├── architecture/                 # 系统级架构
 ├── repos.manifest.json           # 子仓库声明
+├── .knowledge/agent-memory/      # 私有中央知识库（父仓库忽略）
 ├── bootstrap.py                  # Python 构建入口
 ├── workspace.ps1                 # Windows 统一命令
 ├── workspace.sh                  # Linux/macOS 统一命令
@@ -29,10 +30,11 @@ nebula-workspace/
 - 仓库 URL、默认分支和本地目录约定；
 - VS Code/Cursor 多根工作区生成逻辑；
 - CRG、RTK、编辑器规则和 hooks 的初始化逻辑。
+- 中央知识库克隆、项目模块清单刷新、新鲜度检查和 Hermes CRG MCP 注册。
 
 ## 在新机器上构建
 
-前置依赖：Git、Python 3。
+前置依赖：Git、Python 3，以及能读取私有仓库 `LiaoHan5426/agent-memory` 的 GitHub 凭据。
 
 ### Windows
 
@@ -66,6 +68,18 @@ git clone https://github.com/LiaoHan5426/nebula-workspace-bootstrap.git ~/Code/n
 
 `init` 默认读取 `repos.manifest.json` 中的全部仓库，不需要重复填写前后端 URL。
 
+它还会把中央知识库克隆到工作区相对路径 `.knowledge/agent-memory`，自动刷新
+后端 Maven 模块地图和前端 workspace 地图，并在检测到 Hermes CLI 时用
+`hermes mcp add` 注册工作区虚拟环境中的 code-review-graph MCP。共享配置不写
+盘符、用户名或其他机器绝对路径。
+
+初始化后，两个源码仓库的 `.hermes.md` 会从 `WIKI_PATH` 或相对路径
+`../.knowledge/agent-memory` 激活项目知识。可手工检查项目知识新鲜度：
+
+```powershell
+python .knowledge\agent-memory\scripts\project_navigation.py check --workspace-root .
+```
+
 如果只需要基础工作空间、暂时不安装 RTK 或不构建代码图：
 
 ```powershell
@@ -94,7 +108,7 @@ Linux/macOS：
 .\workspace.ps1 doctor
 ```
 
-诊断命令会确认根目录是否为有效的工作空间 Git 仓库，并检查前后端仓库是否存在。
+诊断命令会确认根目录是否为有效的工作空间 Git 仓库，并检查前后端仓库、中央知识库和 code-review-graph 可执行文件是否存在。
 
 工具不会把“仅存在一个空 `.git` 目录”的旧工作空间视为有效仓库，也不会自动覆盖非空的无版本工作空间。
 

@@ -3,7 +3,8 @@ from __future__ import annotations
 from .config import RepoConfig, RtkInstall, load_manifest, parse_repos
 from .git import clone_or_update_repo, ensure_workspace_gitignore
 from .venv import ensure_venv, venv_python
-from .crg import ensure_crg, crg_executable, crg_register_and_build
+from .crg import configure_hermes_crg, ensure_crg, crg_executable, crg_register_and_build
+from .knowledge import knowledge_repo, project_repos, run_knowledge_refresh
 from .workspace import build_code_workspace
 from .rtk import setup_rtk, rtk_binary_name, patch_claude_md_in_repos
 from .hooks import write_workspace_cursor_assets
@@ -22,6 +23,10 @@ __all__ = [
     "ensure_crg",
     "crg_executable",
     "crg_register_and_build",
+    "configure_hermes_crg",
+    "knowledge_repo",
+    "project_repos",
+    "run_knowledge_refresh",
     "build_code_workspace",
     "setup_rtk",
     "rtk_binary_name",

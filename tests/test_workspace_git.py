@@ -53,6 +53,7 @@ class WorkspaceManifestTests(unittest.TestCase):
             [
                 ("nebula", "nebula", "development"),
                 ("nebula-studio", "nebula-studio", "development"),
+                ("agent-memory", ".knowledge/agent-memory", "main"),
             ],
         )
 
@@ -67,6 +68,7 @@ class WorkspaceManifestTests(unittest.TestCase):
 
         self.assertIn("/nebula/", first)
         self.assertIn("/nebula-studio/", first)
+        self.assertIn("/.knowledge/agent-memory/", first)
         self.assertIn(".venv/", first)
         self.assertEqual(first, second)
 

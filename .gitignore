@@ -28,6 +28,7 @@ Thumbs.db
 # Nested repositories (managed through repos.manifest.json)
 /nebula/
 /nebula-studio/
+/.knowledge/agent-memory/
 
 # Generated workspace state
 /.code-review-graph/

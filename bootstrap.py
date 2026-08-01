@@ -13,6 +13,7 @@ from src import (
     RepoConfig,
     build_code_workspace,
     clone_or_update_repo,
+    configure_hermes_crg,
     crg_register_and_build,
     ensure_crg,
     ensure_venv,
@@ -21,9 +22,11 @@ from src import (
     parse_repos,
     patch_claude_md_in_repos,
     setup_rtk,
+    run_knowledge_refresh,
     sync_agent_skills_rules_to_editor,
     write_architecture_agents,
     write_workspace_cursor_assets,
+    venv_python,
 )
 
 
@@ -381,6 +384,19 @@ Examples:
         crg_register_and_build(
             venv_dir, repos, workspace_root, skip_graph_build=args.skip_graph_build
         )
+        configure_hermes_crg(venv_dir)
+
+        # Rebuild deterministic module/package navigation after every clone or
+        # update. The knowledge repo is workspace-relative, so the same manifest
+        # works on Windows, Linux and macOS without machine-specific paths.
+        if any(repo.role == "knowledge" for repo in repos):
+            run_knowledge_refresh(
+                workspace_root,
+                repos,
+                python_executable=str(venv_python(venv_dir)),
+            )
+        else:
+            print("[knowledge] no knowledge repository selected; skip navigation refresh")
 
         # Sync editor-specific rules
         editors = [args.editor] if args.editor else ["cursor"]
