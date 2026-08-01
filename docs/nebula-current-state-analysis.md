@@ -14,7 +14,7 @@
 3. 仓库内 `development-status.md`、`implementation-backlog.md`、测试文档；
 4. 历史规划和已完成阶段说明。
 
-“存在接口、类或页面”只证明结构已落地；只有应用启动、目标测试和端到端验收通过后，才标记为运行闭环。此次文档审查未重新执行后端三应用真实栈，因此 2026-07-26 记录的 `platform-console` 启动失败应视为历史阻塞和当前待复验关口。当前源码已有创建 `ConfigService` 的候选装配，但既不能据此断言仍会失败，也不能假定已经修复。
+“存在接口、类或页面”只证明结构已落地；只有应用启动、目标测试和端到端验收通过后，才标记为运行闭环。2026-08-01 已完成 W0 实跑：历史 `ConfigService` 阻塞已修复，三个正式平台应用完成 Context、启动、健康、在线契约和无 Mock real-stack 验收。该结果只证明 G0 可运行基线，不代表发布、租户、CDC 等后续生产闭环已经完成。
 
 ## 2. 仓库快照
 
@@ -34,14 +34,14 @@
 | 领域 | 当前判断 | 关键事实 |
 | --- | --- | --- |
 | 后端模块结构 | 已成型 | 根 Reactor、各领域 starter、三平台应用和 demo 均存在 |
-| 平台运行闭环 | 未验收 | Resource/Governance/Version/Release API 有实现，但默认 `LocalDeployTarget` 只记录日志 |
+| 平台运行基线 | G0 已验收 | 三应用健康、在线 OpenAPI 和 real-stack 通过；默认 `LocalDeployTarget` 仍只记录日志 |
 | Camel 集成 | 可联调、未完全生产化 | Console/Executor、Gateway、POLLING、DAG、监控和 PostgreSQL Debezium 路径存在 |
-| 配置体系 | 核心能力已实现，组合启动待复验 | basic/center、快照、失败策略、刷新和健康检查有代码；最后一次真实栈在 `ConfigService` 装配处失败 |
+| 配置体系 | 核心能力与组合启动已验收 | basic/center、快照、失败策略、刷新和健康检查有代码；JDBC `ConfigService` 装配已由 Context 与真实启动验证 |
 | 安全与租户 | 基础能力可用，隔离未闭环 | JWT/Session/RBAC 已装配；OAuth2 是未进入现行平台应用的可选模块；租户拦截器只检查上下文，不改写 SQL |
 | 插件平台 | 主链路可用 | PF4J 单一生产链路、真实 Maven 下载/搜索、SHA-256、冲突检测和平台 REST 已落地 |
 | 前端架构 | 基础重构完成 | Web/Electron 共享 manifest、preload capability、认证、运行时和 API client |
-| 前端业务体验 | 主要界面已落地，真实数据闭环未证明 | Portal/Provider/Admin、Settings、Docs、AuthFlow 均有实现；真实栈仍受后端启动阻塞 |
-| 测试基础设施 | 已建立 | Playwright 配置实际枚举 24 项测试，分为 mock、experience、real-stack、electron 四组 |
+| 前端业务体验 | 主要界面已落地，G0 真实栈通过 | 登录、Shell、搜索、目录、插件、订阅、Settings、Monitor 和 Gateway 最小纵向路径已通过；完整业务数据闭环仍属后续波次 |
+| 测试基础设施 | 已建立并实跑 G0 | Playwright 配置实际枚举 24 项测试；其中 real-stack 1 项已在三个正式应用上通过 |
 
 ## 4. 后端实现分析
 
@@ -69,11 +69,11 @@
 
 | 应用 | 端口 | 职责 | 状态口径 |
 | --- | --- | --- | --- |
-| `platform-console` | 8090 | system、resource、governance、config、version、release、task、plugin 等管理 API 与 OpenAPI | 模块存在；最后记录的真实启动未通过 |
-| `platform-integration` | 8080 | Camel 定义面、认证、租户、订阅、治理 | 生产装配入口，需与其他两应用联合验收 |
-| `platform-integration-executor` | 8081 | Gateway、Route、DAG、任务与执行监控 | 生产执行面，需联合验收 |
+| `platform-console` | 8090 | system、resource、governance、config、version、release、task、plugin 等管理 API 与 OpenAPI | 2026-08-01 启动、健康和在线 OpenAPI 通过 |
+| `platform-integration` | 8080 | Camel 定义面、认证、租户、订阅、治理 | 2026-08-01 启动、健康及登录/Monitor 最小 API 通过 |
+| `platform-integration-executor` | 8081 | Gateway、Route、DAG、任务与执行监控 | 2026-08-01 启动、健康及 Gateway 最小路径通过 |
 
-`nebula-platform/platform-admin` 仍有被 Git 跟踪的源码和 POM，但已从 `nebula-platform/pom.xml` 的 `<modules>` 中移除，不属于当前 Reactor。文档不得再把它列为活动应用；其残留应后续归档或删除。
+`nebula-platform/platform-admin` 仍保留历史源码和 POM，但已从 `nebula-platform/pom.xml` 的 `<modules>` 中移除，并由目录 README 明确标记为归档，不属于当前 Reactor 或部署拓扑。
 
 `demos/demo-camel-console` 和 `demos/demo-camel-executor` 是演示组合，不再作为目标生产入口。
 
@@ -104,20 +104,25 @@
 
 - `nebula-config` 已拆分 core、storage、center API、Config Server、Nacos、runtime、autoconfigure 和 starter。
 - 支持 basic JDBC 启动期加载、center provider、文件快照、`fail-fast/use-snapshot/ignore`、可刷新前缀和健康状态。
-- `ConfigAutoConfiguration` 在存在 `ConfigRepository` 时创建 `ConfigService`，默认仓库为内存，JDBC 仓库受 `nebula.config.storage=jdbc` 和 `JdbcTemplate` 条件控制。
+- `ConfigAutoConfiguration` 创建 `ConfigService`，默认仓库为内存；JDBC 仓库由 `nebula.config.storage=jdbc` 选择，并在 Bean 实例化阶段显式要求 `JdbcTemplate`，兼容数据库 starter 的后置动态注册。
 
 ### 4.4 关键缺口
 
-#### P0：Platform 启动与真实栈
+#### 已解除的 P0：Platform 启动与真实栈
 
-最新仓库文档记录的 2026-07-26 实跑结果为：Maven Reactor 构建和 PostgreSQL 连接成功，但 `platform-console` 创建 `ConfigRestController` 时缺少 `ConfigService` Bean。当前源码中 `ConfigAutoConfiguration.nebulaConfigService(...)` 已定义候选 Bean，starter 也依赖 autoconfigure；但缺少当前 HEAD 的 ApplicationContext 冒烟和启动结果，因此实际状态只能记为“候选修复存在、尚待复验”。
+2026-08-01 的 W0 实跑已替代 2026-07-26 历史失败结论。根因是 `JdbcTemplate` 由数据库 starter 通过 `BeanDefinitionRegistryPostProcessor` 后置注册，而 JDBC ConfigRepository 的 `@ConditionalOnBean` 在更早阶段求值，导致仓库和 `ConfigService` 未注册。移除该过早条件后，由构造参数在 Bean 实例化阶段显式校验 `JdbcTemplate`。
 
-证据：
+验证证据：
 
-- `../nebula/nebula-platform/platform-console/application.yml` 使用 `nebula.config.storage=jdbc`；
-- `../nebula/nebula-config/config-autoconfigure/.../ConfigAutoConfiguration.java` 的 JDBC 仓库依赖 `JdbcTemplate` 条件；
-- `../nebula/nebula-config/config-starter/.../ConfigStarterAutoConfiguration.java` 本身为空壳聚合自动配置；
-- `../nebula/docs/development-status.md` 与前端 `docs/testing.md` 均记录相同阻塞。
+- 配置自动配置测试覆盖后置注册成功与缺少 `JdbcTemplate` 的明确失败；
+- 三个正式应用的 ApplicationContext 冒烟测试通过；
+- 142 模块定向 Reactor 测试及构建通过；
+- 三应用从停止状态由 real-stack 脚本启动并通过 8090、8080、8081 健康检查；
+- 8090 OpenAPI 3.1.0 包含 132 条路径，并按 token/session/oauth 模式声明认证；只把启动期静态清单标记为公开，数据库动态公开规则不会放宽文档声明；严格在线生成及幂等检查通过；
+- `/monitor/**` 已从公开清单移除并由安全链按读写权限保护，真实栈确认未认证请求返回 401；
+- 1 项无 Mock real-stack Playwright 测试通过，Web production build 通过。
+
+实跑还修复了非 JSON 转换器被统一响应 Advice 包装导致的写出异常，以及 Cluster JDBC 事务跨入 JPA 租约回收导致的资源重复绑定。节点接管增加 `RECLAIMING` 原子状态与任务/订阅租约节点行锁围栏；real-stack 清理只终止本次启动且所有权可验证的服务。Integration 修复后持续运行超过一个调度周期，未再出现该事务异常。
 
 #### P0：Release 未驱动真实 Runtime
 
@@ -194,7 +199,7 @@ Electron 与 Web 都消费生成的窗口配置。Electron preload 由统一入�
 
 #### 生成契约采用不完整
 
-`generate:contracts`、离线 OpenAPI 和 generated facade 已存在，但业务仍使用 `contracts/auth`、`contracts/system`、`contracts/integration` 等兼容手写契约。新增 API 应只通过 facade 暴露，存量需逐域迁移并在 CI 校验差异。
+`generate:contracts`、离线 OpenAPI 和 generated facade 已存在，但业务仍使用 `contracts/auth`、`contracts/system`、`contracts/integration` 等兼容手写契约。当前在线文档虽覆盖 132 条路径并声明安全要求，仍有不少操作缺少精确响应体、错误响应与领域约束元数据；生成类型不能替代运行时校验。新增 API 应只通过 facade 暴露，存量需逐域迁移并在 CI 校验差异。
 
 #### feature 边界仍主要留在应用内部
 
@@ -206,7 +211,7 @@ MFA 与恢复步骤是前端状态和交互容器，后端尚无对应事务、�
 
 #### Mock 与真实栈边界
 
-MSW 包提供 auth、integration、settings handlers，Mock E2E 适合快速回归。`real-stack` project 明确不允许网络 Mock，但最后一次运行在 Platform Console 启动阶段停止，尚未证明登录、资源申请、插件、订阅、Gateway、Monitor 和在线契约的完整真实链路。
+MSW 包提供 auth、integration、settings handlers，Mock E2E 适合快速回归。`real-stack` project 明确不允许网络 Mock。2026-08-01 已在三个正式应用上通过登录、Shell、搜索、目录、插件、订阅、Settings 权限页、Monitor、Gateway 和在线契约的最小纵向测试；资源申请、审批、发布、回滚等完整业务链仍属于 W1。
 
 #### 其他增量治理
 
@@ -222,8 +227,8 @@ MSW 包提供 auth、integration、settings handlers，Mock E2E 适合快速回�
 | 路径域 | 目标 |
 | --- | --- |
 | `/api/platform`、`/api/system`、governance/version/release | `platform-console:8090` |
-| 默认 `/api`、认证、租户、订阅、Camel Console | `platform-integration`/兼容 Console `:8080` |
-| `/api/executor`、Gateway、Executor demo | `platform-integration-executor`/兼容 Executor `:8081` |
+| 默认 `/api`、认证、租户、订阅、Camel 定义面 | `platform-integration:8080` |
+| `/api/executor`、Gateway、执行面 | `platform-integration-executor:8081` |
 
 当前是三进程过渡架构，不应再写成“只启动 platform-console + executor”。正式目标是三平台应用联合运行，demo 仅保留示例用途。
 
@@ -231,8 +236,7 @@ MSW 包提供 auth、integration、settings handlers，Mock E2E 适合快速回�
 
 | 优先级 | 工作项 | 完成定义 |
 | --- | --- | --- |
-| P0 | 恢复 Platform Console 启动 | ApplicationContext 冒烟通过，三应用健康检查通过 |
-| P0 | 打通真实栈 | `vp run test:e2e:real` 无 Mock 通过，在线契约无漂移 |
+| 已完成 G0 | 恢复 Platform 与真实栈基线 | ApplicationContext、三应用健康、在线契约和 `vp run test:e2e:real` 已通过 |
 | P0 | 真实 DeployTarget | 至少一种资源发布后在 Runtime 生效并可回滚 |
 | P1 | 租户强隔离 | 查询/写入都由统一机制强制 tenant 条件，并有跨租户负向测试 |
 | P1 | CDC/任务/集群生产化 | 无未授权模拟、共享 offset、唯一调度和故障接管可验证 |
@@ -245,7 +249,7 @@ MSW 包提供 auth、integration、settings handlers，Mock E2E 适合快速回�
 ## 8. 风险结论
 
 1. **最大交付风险不是缺少模块，而是“结构存在”被误写成“运行通过”。**
-2. **Platform Console 启动是所有真实栈验收的前置关口。**
+2. **Platform Console 与三应用真实栈的 G0 关口已通过，下一前置关口是 W1 的真实 DeployTarget。**
 3. **默认日志 DeployTarget、非强制租户 SQL 和可显式启用的 CDC 模拟模式都不能进入生产完成口径。**
 4. **前端重构已完成大部分基础设施，下一阶段应优先消除真实契约与真实数据缺口，而不是继续目录搬迁。**
 5. **插件远程仓库已是真实实现，旧文档中的 placeholder 结论必须删除；剩余问题是供应链治理。**

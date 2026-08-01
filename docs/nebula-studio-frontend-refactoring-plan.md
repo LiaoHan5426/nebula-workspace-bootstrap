@@ -9,7 +9,7 @@
 
 Nebula Studio 已完成宿主、窗口配置、preload、认证、运行时、基础布局、主要产品界面和测试分组的基础重构。下一阶段不需要再次搬迁目录，而应集中解决：
 
-1. 真实后端栈尚未通过；
+1. G0 真实后端栈已通过，但 W1 资源发布与完整真实数据链尚未闭环；
 2. generated contracts 业务采用不完整；
 3. Integration 的 feature 主要仍是应用内边界；
 4. MFA/恢复只有前端状态容器，后端契约未实现；
@@ -203,9 +203,9 @@ credentials → organization → mfa → recovery → success/failure
 
 ## 7. 当前缺口
 
-### F0：真实栈尚未通过（P0）
+### F0：真实栈基线已恢复（G0 已完成）
 
-最后一次记录的真实运行在 `platform-console` 缺少 `ConfigService` Bean 处失败；当前后端源码已有候选装配，但没有当前 HEAD 的启动证据。本次审查只执行了 Playwright test listing，没有重新运行真实栈。核实装配并在必要时修复后，必须重新执行 `vp run test:e2e:real`。
+2026-08-01 已修复 `ConfigService`、在线 OpenAPI 统一响应和跨事务管理器租约回收问题。`run-real-stack.ps1` 已从两个 demo 切换到三个正式平台应用，并从停止状态完成定向构建、8090/8080/8081 健康、在线契约生成和 1 项无 Mock real-stack 测试。F0 不再是当前阻塞，下一前端重点转为 generated contracts 采用与 W1 真实发布数据链。
 
 ### F1：generated contracts 采用率不足（P0）
 
@@ -279,16 +279,16 @@ vp exec playwright test --list
 | `real-stack` | 1 | 三后端应用 + Web + 在线契约；禁止业务网络 Mock |
 | `electron` | 1 | 启动、会话、preload capability 和窗口切换 |
 
-“测试已列出”不等于“测试在当前提交全部通过”。仓库文档记录的历史通过结果可作为回归参考，但完成报告必须附本次实际命令和退出码。
+除 test listing 外，2026-08-01 已实际执行 `vp run test:e2e:real`，1 项 real-stack 测试通过；`vp run build:web` 与 `vp run check:generated` 同时通过。其余 mock、experience、electron 项目未在本次 W0 中全量重跑，不能据此宣称 24 项全部通过。
 
 ## 9. 增量实施顺序
 
 ### Phase A：恢复真实栈
 
-- [ ] 修复 Platform Console Context；
-- [ ] 三后端应用健康检查；
-- [ ] 在线生成契约无漂移；
-- [ ] real-stack 完整通过。
+- [x] 修复 Platform Console Context；
+- [x] 三后端应用健康检查；
+- [x] 严格在线生成契约并完成幂等检查，在线失败不回退已提交契约；
+- [x] real-stack 完整通过。
 
 ### Phase B：契约和真实数据
 

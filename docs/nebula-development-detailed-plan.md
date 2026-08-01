@@ -17,7 +17,7 @@
 
 | 编号 | 阻塞 | 证据 | 影响 |
 | --- | --- | --- | --- |
-| B0-1 | `platform-console` 历史实跑缺少 `ConfigService` Bean，当前源码有候选装配但未复验 | 后端/前端仓库测试文档记录 2026-07-26 失败；当前 HEAD 未重跑 | 在复验通过前，不能宣称在线 OpenAPI、Settings、Platform API 和 real-stack 已闭环 |
+| B0-1 | 已解除：`platform-console` 的 `ConfigService` 装配、在线 OpenAPI 与三应用真实栈已复验 | 2026-08-01 Context、三应用健康、在线契约与 real-stack 均通过 | 不再阻塞 G0；后续阻塞转为真实发布与租户边界 |
 | B0-2 | 默认 `LocalDeployTarget` 只写日志 | `release-manager/.../LocalDeployTarget.java` | 发布状态变化不等于 Runtime 生效 |
 | B0-3 | 租户 SQL 不由框架强制 | `tenant-context/.../MyBatisTenantInterceptor.java` | Mapper 漏写条件时可能跨租户读取 |
 | B0-4 | 前端 generated contracts 采用不完整 | generated facade 与手写领域契约并存 | 后端变更不能完整触发编译失败 |
@@ -33,29 +33,32 @@
 | W4 | 前端真实数据与契约收口 | generated facade、真实 Portal/Settings/Camel 链路 | G4 |
 | W5 | 消息、观测与供应链治理 | DLQ、持久通知、跨实例通道、Trace、插件信任 | G5 |
 
-W0 必须最先完成。W1 与 W2 可在 G0 后并行；W3 与 W4 可按契约分片并行；W5 不阻塞核心平台首次可用版本。
+W0/G0 已于 2026-08-01 完成。W1 与 W2 现在可并行；W3 与 W4 可按契约分片并行；W5 不阻塞核心平台首次可用版本。
 
 ## 4. W0：恢复 Platform 与真实栈基线
 
 ### 4.1 后端
 
-- [ ] 为 `platform-console` 增加 ApplicationContext 冒烟测试，断言以下 Bean 同时存在：
+- [x] 为 `platform-console` 增加 ApplicationContext 冒烟测试，断言以下 Bean 同时存在：
   - `ConfigRepository`
   - `ConfigService`
   - `ConfigRestController`
   - `DataSource` / `JdbcTemplate`
-- [ ] 核对 `config-starter` 到 `config-autoconfigure` 的传递依赖和 `AutoConfiguration.imports`。
-- [ ] 明确 `nebula.config.storage=jdbc` 下无 `JdbcTemplate` 时的失败信息，禁止控制器以隐蔽缺 Bean 方式失败。
-- [ ] 为 `platform-integration`、`platform-integration-executor` 增加最小 Context 冒烟，覆盖各自关键 starter。
-- [ ] 清理或归档未进入 Reactor 的 `nebula-platform/platform-admin`，避免模块清单继续漂移。
+- [x] 核对 `config-starter` 到 `config-autoconfigure` 的传递依赖和 `AutoConfiguration.imports`。
+- [x] 明确 `nebula.config.storage=jdbc` 下无 `JdbcTemplate` 时的失败信息，禁止控制器以隐蔽缺 Bean 方式失败。
+- [x] 为 `platform-integration`、`platform-integration-executor` 增加最小 Context 冒烟，覆盖各自关键 starter。
+- [x] 归档未进入 Reactor 的 `nebula-platform/platform-admin`，以目录 README 明确禁止作为活动应用使用。
 - [ ] 将被 Git 跟踪的明文数据库/外部服务凭据迁到环境变量或受控 Secret，并完成凭据轮换；测试只使用无敏感信息的默认值。
+
+> 凭据迁移与轮换需要环境所有者提供目标密钥存储及轮换窗口，不作为本次 G0 构建、启动与真实栈通过条件；在完成前仍属于安全治理待办。
 
 ### 4.2 前端与编排
 
-- [ ] 保持 `scripts/e2e/run-real-stack.ps1` 使用三个正式平台应用，不退回 demo 掩盖问题。
-- [ ] 服务启动后逐个验证 8090、8080、8081 健康端点。
-- [ ] 从在线 8090 OpenAPI 重新生成契约，并执行生成文件差异检查。
-- [ ] 失败日志继续按 Platform/Integration/Executor/Web 分域保存。
+- [x] 保持 `scripts/e2e/run-real-stack.ps1` 使用三个正式平台应用，不退回 demo 掩盖问题。
+- [x] 服务启动后逐个验证 8090、8080、8081 健康端点。
+- [x] 从在线 8090 OpenAPI 严格生成契约；在线请求失败时禁止回退已提交契约，并执行生成文件差异检查。
+- [x] 失败日志继续按 Platform/Integration/Executor/Web 分域保存。
+- [x] 复用已健康的用户服务时不记录或终止其监听 PID；只清理本次脚本启动且所有权校验通过的进程。
 
 ### 4.3 G0 验收
 
@@ -68,6 +71,22 @@ W0 必须最先完成。W1 与 W2 可在 G0 后并行；W3 与 W4 可按契约�
 ```
 
 不得通过跳过 8090、关闭健康检查或启用 MSW 完成 G0。
+
+### 4.4 2026-08-01 实施结果
+
+G0 已通过：
+
+- Java 25.0.1、Maven 3.9.16 下，三个正式应用及其 143 个 Reactor 模块定向构建成功；
+- 配置、响应转换器、集群接管、租约围栏、安全配置、OpenAPI 与三个 ApplicationContext 共 27 项目标测试通过；
+- `platform-console`、`platform-integration`、`platform-integration-executor` 分别在 8090、8080、8081 启动并通过健康检查；
+- 8090 在线 OpenAPI 返回 3.1.0、132 条路径，生成快照与 TypeScript 契约已刷新且幂等检查通过；
+- 在线 OpenAPI 按 token/session/oauth 运行模式声明对应认证方案，仅把启动期静态公开路径标记为公开；动态数据库规则采用保守的“仍标记受保护”文档策略；
+- 数据库监控端点不再公开，所有操作均要求 `ADMIN` 角色；真实栈验证未认证访问返回 401；
+- 集群接管先以观测到的心跳原子切换到 `RECLAIMING`，心跳和任务/订阅租约获取通过节点行锁围栏，全部租约域回收成功后才转为 `OFFLINE`；
+- `vp run test:e2e:real` 从停止状态自行构建、启动三个正式应用并通过 1 项 real-stack 测试，结束后只关闭本次启动且所有权可验证的临时服务；
+- Web production build 通过；本地 RustFS S3 API 的 9000 健康检查返回 200。
+
+G0 修复同时消除了动态注册 `JdbcTemplate` 时 JDBC ConfigRepository 条件过早求值、非 JSON 响应被统一响应 Advice 错误包装、集群 JDBC 事务跨入 JPA 租约回收导致资源重复绑定、恢复节点与接管扫描竞态、监控端点公开及 real-stack 误杀复用服务等问题。明文凭据迁移和轮换仍是安全治理项，不因本地 G0 通过而视为完成。
 
 ## 5. W1：真实资源发布闭环
 
