@@ -55,6 +55,10 @@ if ($Command -eq "doctor") {
         $repoGit = Test-Path -LiteralPath (Join-Path $WorkspaceRoot "$repo\.git")
         Write-Host "${repo}: $(if ($repoGit) { 'OK' } else { 'MISSING' })"
     }
+    $knowledge = Test-Path -LiteralPath (Join-Path $WorkspaceRoot ".knowledge\agent-memory\.git")
+    Write-Host "agent-memory: $(if ($knowledge) { 'OK' } else { 'MISSING' })"
+    $crg = Join-Path $WorkspaceRoot ".venv\Scripts\code-review-graph.exe"
+    Write-Host "code-review-graph: $(if (Test-Path -LiteralPath $crg) { 'OK' } else { 'MISSING' })"
     exit $(if ($validGit) { 0 } else { 1 })
 }
 

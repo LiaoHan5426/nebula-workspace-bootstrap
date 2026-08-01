@@ -135,6 +135,8 @@ def write_architecture_agents(
 
     repo_rows = []
     for repo in repos:
+        if not repo.build_graph:
+            continue
         repo_path = workspace_root / repo.dir
         repo_rows.append(f"| `{repo.crg_alias}` | `{repo_path}` |")
 

@@ -14,6 +14,9 @@ class RepoConfig:
     workspace_name: str
     crg_alias: str
     branch: Optional[str] = None
+    role: str = "source"
+    build_graph: bool = True
+    project_id: Optional[str] = None
 
 
 @dataclass
@@ -55,6 +58,9 @@ def parse_repos(manifest: dict, selected: Optional[List[str]]) -> List[RepoConfi
                 workspace_name=cfg.get("workspaceName", key),
                 crg_alias=cfg.get("crgAlias", key),
                 branch=cfg.get("branch"),
+                role=cfg.get("role", "source"),
+                build_graph=cfg.get("buildGraph", cfg.get("role", "source") == "source"),
+                project_id=cfg.get("projectId"),
             )
         )
     return result

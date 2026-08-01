@@ -15,6 +15,11 @@ if [[ "$command_name" == "doctor" ]]; then
     echo "Meta repository: MISSING OR INVALID"
     exit 1
   }
+  for repo in nebula nebula-studio; do
+    test -d "$workspace_root/$repo/.git" && echo "$repo: OK" || echo "$repo: MISSING"
+  done
+  test -d "$workspace_root/.knowledge/agent-memory/.git" && echo "agent-memory: OK" || echo "agent-memory: MISSING"
+  test -x "$workspace_root/.venv/bin/code-review-graph" && echo "code-review-graph: OK" || echo "code-review-graph: MISSING"
   exit 0
 fi
 
