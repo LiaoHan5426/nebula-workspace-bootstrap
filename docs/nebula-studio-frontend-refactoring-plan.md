@@ -18,18 +18,18 @@ Nebula Studio 已完成宿主、窗口配置、preload、认证、运行时、�
 
 ## 2. 技术与工作区基线
 
-| 类别 | 当前值 |
-| --- | --- |
-| Node.js | `>=22.12.0` |
-| 包管理声明 | `pnpm@11.5.1` |
-| 日常工具 | Vite+ CLI `vp` |
-| Vite+ / Vite | 0.2.6 / 8.1.3 |
-| Vue / Vue Router | 3.5.35 / 4.6.4 |
-| TypeScript | 6.0.3 |
-| Electron / electron-vite | 43.x / 5.x |
-| Tailwind CSS | 4.3.3 |
-| Vitest / Playwright | 4.1.10 / 1.62.0 |
-| 工作区清单 | 38 个 `package.json` |
+| 类别                     | 当前值               |
+| ------------------------ | -------------------- |
+| Node.js                  | `>=22.12.0`          |
+| 包管理声明               | `pnpm@11.5.1`        |
+| 日常工具                 | Vite+ CLI `vp`       |
+| Vite+ / Vite             | 0.2.6 / 8.1.3        |
+| Vue / Vue Router         | 3.5.35 / 4.6.4       |
+| TypeScript               | 6.0.3                |
+| Electron / electron-vite | 43.x / 5.x           |
+| Tailwind CSS             | 4.3.3                |
+| Vitest / Playwright      | 4.1.10 / 1.62.0      |
+| 工作区清单               | 38 个 `package.json` |
 
 版本事实来自根 `package.json` 与 `pnpm-workspace.yaml`。尽管 package manager 字段仍声明 pnpm，仓库约定日常安装、脚本、检查和测试统一经 `vp` 执行。
 
@@ -204,11 +204,11 @@ apps                    # 只在启动边界提供 Web/Electron/standalone host 
 
 路由和导航已区分：
 
-| Surface | 主要角色 | 当前职责 |
-| --- | --- | --- |
-| Portal | 资源消费者 | 资源目录、详情、申请、我的资源、订阅 |
-| Provider | 资源提供方 | 创建、版本、发布、授权与使用摘要 |
-| Admin | 管理员/运维 | 审批、插件、租户、Executor、治理、监控 |
+| Surface  | 主要角色    | 当前职责                               |
+| -------- | ----------- | -------------------------------------- |
+| Portal   | 资源消费者  | 资源目录、详情、申请、我的资源、订阅   |
+| Provider | 资源提供方  | 创建、版本、发布、授权与使用摘要       |
+| Admin    | 管理员/运维 | 审批、插件、租户、Executor、治理、监控 |
 
 应用内已经形成 `resource-catalog`、`plugin-catalog`、`subscription`、flows 等 feature 目录，但它们不是 `packages/features` 下的共享包。短期应继续收敛应用内部边界，不能仅为满足旧计划数量而制造共享包。
 
@@ -329,8 +329,8 @@ Portal、Shell 摘要、Settings 和部分管理页已经有 UI 与 mapper，但
 - [x] OverlayRoot + Settings confirm 经 assembly overlay；`use-confirm` 薄转发；
 - [x] Code Editor + DAG Editor 试点消费 `EditorHost`（theme/readonly/size/save/diagnostics stub）；
 - [x] `applyStyleContract(root)` 仅作用于子应用挂载根，不写 `document.documentElement`；
-- [ ] 全量 Dialog/Drawer/Select teleport、layout `useShellHosted` 改读 assembly、Integration 手写 modal 迁移（F7 后续）；
-- [ ] 全仓库业务代码无宿主分支 lint（后续静态检查目标）。
+- [x] Dialog/Drawer/Select（及 Dropdown）可选 overlay container 注入，未注入时 fallback body；layout `useShellHosted` 优先读 assembly `host.surface`；Integration 已抽出的 dialog、DAG/Flow 编辑器 overlay，以及页面内联 CRUD overlay（租户/任务/数据源/插件等）均已迁到 `NebulaDialog`；
+- [x] 全仓库业务代码无宿主分支 lint：ESLint `host-boundary` 禁止页面/feature/editor/`nebula-ui`/`nebula-layout`/`nebula-assembly` 判断 `window.electron`、`window.api`、`window.parent`、preload 或 `detectRuntimeMode`（boot / preload / app-shell 除外）。
 
 三阶段落地边界：
 
@@ -340,10 +340,6 @@ Portal、Shell 摘要、Settings 和部分管理页已经有 UI 与 mapper，但
 
 后续重点：
 
-- `nebula-layout` 的 `useShellHosted` 优先读取 assembly `host.surface`，无 context 时再 fallback app-shell；
-- `NebulaDialog`、Drawer、Select 等基础组件支持可选 overlay container 注入，未注入时仍 fallback body；
-- Integration 手写 modal 只按真实收益逐步迁移，不为一次性清理扩大风险；
-- 补充静态检查或 lint，阻止页面、feature、editor 新增 `window.electron` / iframe / preload 宿主判断；
 - Web mock-regression 与 electron smoke 验证同一 assembly 标记或 overlay root 在两个宿主出现。
 
 ## 8. 测试现状
@@ -356,12 +352,12 @@ vp exec playwright test --list
 
 实际枚举 **24 项测试、8 个文件**：
 
-| Project | 数量 | 职责 |
-| --- | ---: | --- |
-| `mock-regression` | 12 | 快速稳定回归，允许固定网络响应 |
-| `experience` | 10 | 亮暗主题、4 个响应式宽度、键盘焦点和性能预算 |
-| `real-stack` | 1 | 三后端应用 + Web + 在线契约；禁止业务网络 Mock |
-| `electron` | 1 | 启动、会话、preload capability 和窗口切换 |
+| Project           | 数量 | 职责                                           |
+| ----------------- | ---: | ---------------------------------------------- |
+| `mock-regression` |   12 | 快速稳定回归，允许固定网络响应                 |
+| `experience`      |   10 | 亮暗主题、4 个响应式宽度、键盘焦点和性能预算   |
+| `real-stack`      |    1 | 三后端应用 + Web + 在线契约；禁止业务网络 Mock |
+| `electron`        |    1 | 启动、会话、preload capability 和窗口切换      |
 
 除 test listing 外，2026-08-01 已实际执行 `vp run test:e2e:real`，1 项 real-stack 测试通过；`vp run build:web` 与 `vp run check:generated` 同时通过。其余 mock、experience、electron 项目未在本次 W0 中全量重跑，不能据此宣称 24 项全部通过。
 
