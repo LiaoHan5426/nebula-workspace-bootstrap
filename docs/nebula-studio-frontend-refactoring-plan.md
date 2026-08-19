@@ -15,7 +15,8 @@ Nebula Studio 已完成宿主、窗口配置、preload、认证、运行时、�
 4. MFA/恢复只有前端状态容器，后端契约未实现；
 5. Settings 存量实体页面和跨应用真实数据仍需收口；
 6. 组件库仍按常规 UI 组件库思路演进，导致页面、编辑器、Web/Electron 宿主之间出现过多转换层和适配层。下一阶段应增加底层组件装配层，把组件、运行环境能力、样式 token 和编辑器接入统一收口，而不是继续扩大纯展示组件数量；
-7. `nebula-assembly` 新增后，`packages/core` 中存量 glue/bridge 层尚未同步精简。若 `app-shell`、`runtime`、`shell`、`electron-shared` 继续保留重复的宿主判断、presentation bridge、theme/locale/preference bridge 和 embed glue，整体复杂度只是被重新包装，并没有真正下降。
+7. `nebula-assembly` 新增后，`packages/core` 中存量 glue/bridge 层尚未同步精简。若 `app-shell`、`runtime`、`shell`、`electron-shared` 继续保留重复的宿主判断、presentation bridge、theme/locale/preference bridge 和 embed glue，整体复杂度只是被重新包装，并没有真正下降；
+8. 运行形态地址配置已收口到既有 `configs/windows.json`，但后续新增页面、测试、脚本时仍必须遵守“配置 → 生成产物 → helper 消费”的链路，避免重新散落 `localhost`、端口、API target 或 embed URL。
 
 ## 2. 技术与工作区基线
 
@@ -115,6 +116,41 @@ apps → app-local features → shared features/editors/ui → core/contracts
 - display order。
 
 生成脚本将配置转为 app-shell/Electron 可消费的代码，`check:generated` 检查幂等和漂移。
+
+### 4.1.1 地址与运行形态单源（已落地）
+
+`configs/windows.json` 已扩展为窗口、API base、dev API target 和前端运行形态的共同入口，不再新增独立 runtime address 配置文件。这里的“运行形态”不是 Electron/Web 宿主差异，而是子应用如何被访问和装载：
+
+| 运行形态 | 说明 | 地址来源要求 |
+| --- | --- | --- |
+| `integrated` | Web Shell / Electron Shell 统一承载，sub-web 通过 embed/iframe/renderer 配置进入 | Shell entry、embed entry、window manifest、API base、asset base 必须来自生成配置 |
+| `standalone` | `apps/sub-web/*` 独立启动，用于子应用局部开发、调试和单包测试 | 独立 dev server port、base path、proxy target、mock/real API mode 必须来自同一注册表 |
+| `real-stack` | 三后端应用 + Web 前端真实链路验证 | 后端 console/executor/platform 地址、OpenAPI 地址、Playwright baseURL 必须由注册表派生 |
+| `mock/e2e` | Playwright mock-regression / experience 等测试运行 | 测试入口、route pattern、mock API base 不得手写散落地址 |
+
+目标是把“地址变更”从全局搜索改成修改既有 `configs/windows.json`，并由生成和检查发现漂移。当前扩展内容包括：
+
+- `shell.web`、`shell.electron.rendererEntry`、`shell.embedQuery`；
+- 每个 sub-web 的 `standalone.port`、`standalone.basePath`、`proxyPreset`、`displayPath`；
+- API namespace 到 proxy target 的映射，例如 `console`、`executor`、`platform`、`system`、`auth`、`governance`；
+- real-stack OpenAPI 与健康检查地址；
+- Playwright project 的默认 baseURL 与允许 mock 的 route pattern；
+- dev/prod 差异只通过 profile 覆盖，不允许在业务代码里拼接端口。
+
+生成产物包括：
+
+- app-shell/Electron/window manifest 消费的 generated window/runtime constants；
+- `internal/vite` runtime helper、Vite/Vite+ dev server proxy 配置；
+- Playwright `baseURL`、real-stack 脚本和 contract generation 的 endpoint；
+- `@nebula-studio/contracts` / api-client 可消费的 API namespace constants；
+- drift check：除配置、生成产物和明确白名单外，禁止新增裸 `localhost`、`127.0.0.1`、固定前后端端口和硬编码跨应用 URL。
+
+边界：
+
+- 页面、feature、editor、UI 包不得读取或拼接 host/port；
+- standalone 子应用只能读取自身运行形态下的 generated address，不得假设 Shell 存在；
+- integrated 运行时只能通过 Shell/window manifest 解析 embed entry，不得硬编码兄弟子应用地址；
+- 测试可以声明 route pattern，但 pattern 来源应从测试运行形态配置生成或集中导出。
 
 ### 4.2 宿主与 renderer
 
@@ -263,10 +299,11 @@ credentials → organization → mfa → recovery → success/failure
 - [x] Mock、experience、real-stack、electron 四类 Playwright project；
 - [x] 保留 `apps/sub-web` 命名，不做无收益的整体迁移；
 - [x] **F0** 真实栈基线（G0）：`ConfigService`、在线 OpenAPI、三应用 `run-real-stack.ps1` 与 real-stack E2E 已通过（2026-08-01）。
+- [x] **F9** 运行形态地址配置：扩展既有 `configs/windows.json` / schema，生成 runtime address、API namespace、Vite proxy、Playwright、real-stack 和 contract endpoint helper，并通过 `check:generated` 地址漂移检查。
 
 ## 7. 当前缺口
 
-> 本节仅保留 **仍未完成** 或需 **外部依赖** 的条目；F0/F7/F8 已闭合，详见 §6。
+> 本节仅保留 **仍未完成** 或需 **外部依赖** 的条目；F0/F7/F8/F9 已闭合，详见 §6。
 
 ### F1：generated contracts 采用率（P0）
 
@@ -312,18 +349,39 @@ credentials → organization → mfa → recovery → success/failure
 - **F7 已完成**：`nebula-assembly` 三阶段 + host-boundary lint；E2E `expectAssemblyMarkers` 统一 Web/Electron 断言
 - **F8 已完成**：core 胶水 inventory + boot 盖章 + layoutHost facade + core→assembly lint；`installWebPresentation` / `shellHostBridge` / `IframeHost` / `installShellIframeElectronBridge` 为**保留协议**，非待删模块
 
+### ~~F9~~（已闭合 → §6 摘要）
+
+- **F9 已完成**：未新增配置文件，直接扩展 `configs/windows.json` 和 `configs/windows.schema.json`，统一承载 `standalone`、`integrated`、`real-stack`、`mock/e2e` 的入口、base path、dev server、API namespace、proxy target、OpenAPI endpoint 和 route pattern。
+- `scripts/generate-window-configs.mjs` 生成 app-shell/Electron manifest、runtime address constants 和 `@nebula-studio/contracts` API namespace constants；`internal/vite` 提供 shell、standalone、proxy、Playwright、real-stack、OpenAPI helper。
+- 子应用 Vite 配置只声明 `appId`，端口、base path、proxy preset 均从 `windows.json` 派生；Shell 集成运行时通过 window manifest/embed helper 进入子应用。
+- `scripts/generate-contracts.mjs`、`playwright.config.ts`、`scripts/e2e/run-real-stack.ps1`、real-stack E2E 和前端 api-client 已切换为生成常量/helper。
+- `vp run check:generated` 已包含地址漂移检查，防止新增裸 host、固定端口和硬编码跨应用 URL。
+
 ## 8. 测试现状
 
 2026-08-19 在本轮 §7 收口执行：
 
 ```text
 vp run check:generated
-vp check
-vp run test:e2e:mock
-vp run --filter @nebula-studio/contracts test
-vp run --filter @nebula-studio-renderer/integration test
-vp run --filter @nebula-studio-renderer/login test
+vp run --filter @nebula-studio-internal/vite test
+vp run electron#typecheck:node
+vp run build:web
 ```
+
+F9 地址配置改造补充验证：
+
+```text
+vp run generate:configs
+vp run check:generated
+vp run --filter @nebula-studio-internal/vite test
+vp run electron#typecheck:node
+vp run build:web
+```
+
+已知未闭合类型问题（非 F9 地址改造新增）：
+
+- `vp run --filter @nebula-studio-renderer/integration typecheck` 仍受历史测试 fixture、订阅事件类型导出、ServiceFlow editor 可选值、tenant users API DTO 等问题影响；
+- `vp run --filter @nebula-studio-renderer/settings typecheck` 仍有 `LogsPage.vue` 未使用 `search` 变量。
 
 | Project           | 职责                                           | 本轮 |
 | ----------------- | ---------------------------------------------- | ---- |
@@ -357,6 +415,7 @@ Playwright 枚举仍为 **24 项 / 8 文件**（`vp exec playwright test --list`
 - [x] Code Editor + DAG 试点 EditorHost
 - [x] token/CSS variables/namespace 样式契约
 - [x] 分类 + 冻结第二入口 + facade 精简 core glue（F8；**非删文件**）
+- [x] 建立运行形态地址注册表，收口 sub-web standalone / integrated / real-stack / mock-e2e 的入口、API target、proxy 与测试地址（F9；扩展既有 `configs/windows.json`，不新增配置文件）
 - [x] Integration composable 提取：`useResourceCatalogPage` / `usePluginsPage` / `useTenantPage` + 单测
 - [x] mapper/composable 单测（contracts + catalog + tenant + authStateMachine）
 - [x] feature 提升门槛文档；`plugin-catalog` index 门面
@@ -385,6 +444,7 @@ Playwright 枚举仍为 **24 项 / 8 文件**（`vp exec playwright test --list`
 - 编辑器接入必须消费 editor host contract，不能在 editor 包内复制 Shell、preload 或 Web embed 适配；
 - 样式变更必须落到 token/CSS variables/namespace 或组件层样式入口，不能只靠页面级 Tailwind class 兜底；
 - assembly 覆盖的能力不得在 `packages/core` 中新增第二套 glue/facade；涉及 core 的重构必须说明删除了哪些旧入口、减少了哪些导出或调用路径；
+- 地址、端口、API target、OpenAPI endpoint、Playwright baseURL 只能来自运行形态地址注册表或生成产物；新增裸 `localhost`、`127.0.0.1`、固定端口、硬编码跨应用 URL 必须被检查拦截；
 - 核心用户旅程有对应 Playwright 层级；
 - 真实业务完成声明必须以 real-stack 为证据。
 
@@ -414,6 +474,7 @@ vp install
 - 继续为 Web、Electron、standalone 分别维护页面级 UI 适配层；
 - 把 Tailwind utility class 当作跨包样式契约；
 - 新增 `nebula-assembly` 后继续保留与其职责重叠的 core glue 层，并把“双轨兼容”长期化；
+- 继续在页面、feature、editor、测试、脚本中散落运行地址，并依赖全局搜索维护；
 - **不因低使用率删除 `packages/editors/*` 或 app-shell 协议 glue**（`installWebPresentation`、`shellHostBridge`、`IframeHost` 等为正式边界）。
 
 ## 12. 成功标准
@@ -426,7 +487,8 @@ vp install
 4. Web 与 Electron 共用窗口、认证、租户和 API 定义；
 5. Web、Electron、standalone 共用底层组件装配层，业务组件和编辑器不再手写宿主适配；
 6. `packages/core` 中与 assembly 重叠的 glue/bridge 层被删除、收敛或降级为明确的兼容 facade，导出面和跨包调用路径实际减少；
-7. App-local feature 边界清晰，共享包只来自真实复用；
-8. 样式 token、CSS variables、组件命名空间和暗色/密度配置稳定，Tailwind 只作为实现工具而非跨包契约；
-9. AuthFlow 的 MFA/恢复由真实后端状态机驱动；
-10. Mock、体验、Electron 和 real-stack 各自承担明确且不互相替代的责任。
+7. sub-web 独立运行、Shell 集成运行、mock/e2e、real-stack 的地址配置来自同一运行形态注册表，地址调整不再依赖全局搜索；
+8. App-local feature 边界清晰，共享包只来自真实复用；
+9. 样式 token、CSS variables、组件命名空间和暗色/密度配置稳定，Tailwind 只作为实现工具而非跨包契约；
+10. AuthFlow 的 MFA/恢复由真实后端状态机驱动；
+11. Mock、体验、Electron 和 real-stack 各自承担明确且不互相替代的责任。
