@@ -14,7 +14,8 @@ Nebula Studio 已完成宿主、窗口配置、preload、认证、运行时、�
 3. Integration 的 feature 主要仍是应用内边界；
 4. MFA/恢复只有前端状态容器，后端契约未实现；
 5. Settings 存量实体页面和跨应用真实数据仍需收口；
-6. 组件库仍按常规 UI 组件库思路演进，导致页面、编辑器、Web/Electron 宿主之间出现过多转换层和适配层。下一阶段应增加底层组件装配层，把组件、运行环境能力、样式 token 和编辑器接入统一收口，而不是继续扩大纯展示组件数量。
+6. 组件库仍按常规 UI 组件库思路演进，导致页面、编辑器、Web/Electron 宿主之间出现过多转换层和适配层。下一阶段应增加底层组件装配层，把组件、运行环境能力、样式 token 和编辑器接入统一收口，而不是继续扩大纯展示组件数量；
+7. `nebula-assembly` 新增后，`packages/core` 中存量 glue/bridge 层尚未同步精简。若 `app-shell`、`runtime`、`shell`、`electron-shared` 继续保留重复的宿主判断、presentation bridge、theme/locale/preference bridge 和 embed glue，整体复杂度只是被重新包装，并没有真正下降。
 
 ## 2. 技术与工作区基线
 
@@ -57,12 +58,12 @@ packages/
 ├── contracts/               # 手写兼容契约 + OpenAPI 生成结果/facade
 ├── core/
 │   ├── api-client
-│   ├── app-shell
+│   ├── app-shell             # 待精简：保留 shell 协议/manifest/消息，不继续承载 UI 装配胶水
 │   ├── auth / auth-provider
-│   ├── electron-shared
+│   ├── electron-shared       # 待精简：保留 Electron 共享类型/preload 契约，theme/locale/preference bridge 向 assembly/boot 边界收口
 │   ├── msw
-│   ├── runtime
-│   ├── shell
+│   ├── runtime               # 待精简：保留 bootMicroApp 协议，减少运行时宿主检测扩散
+│   ├── shell                 # 待治理：Shell 产品容器，避免继续沉淀跨宿主 UI glue
 │   ├── sse-events
 │   └── tenant
 ├── editors/
@@ -93,6 +94,7 @@ apps → app-local features → shared features/editors/ui → core/contracts
 约束：
 
 - `core` 不依赖 `apps` 或业务 feature；
+- `core` 不依赖 `ui/nebula-assembly`，但 `core` 中已被 assembly 接管的 UI 装配、overlay、theme/density、editor host 与宿主判断能力必须逐步删除或降级为兼容 facade；
 - `ui` 不访问业务 API；
 - `ui/nebula-ui` 只提供无宿主假设的基础组件，`ui/nebula-assembly` 负责组件装配、运行环境能力注入和样式适配；
 - 页面不重新声明服务端 DTO；
@@ -146,6 +148,8 @@ core/runtime、app-shell、electron main 不依赖 assembly。
 ```
 
 `bootMicroApp` 继续作为子应用启动协议，不直接 import assembly，避免 `core → ui`。Web/Electron/standalone 的差异只能出现在 apps boot 组装 Host Adapter 的边界；页面、feature、editor 内不得判断 `window.electron`、iframe、preload 或路由实现。现有 `ConfigProvider` 不拆除，theme/locale 仍由它同步 DOM；assembly 读取并桥接该上下文，同时补齐 density、overlay、host capability 和 editor host。
+
+需要特别注意：新增 `nebula-assembly` 不是“再加一层”。它只有在后续同步精简 `packages/core` 旧 glue 层时才算完成架构优化。`app-shell` 应回到 shell manifest、窗口/嵌入协议、消息与导航协作；`runtime` 应只保留子应用启动协议和最小运行模式识别；`electron-shared` 应保留 Electron 共享类型、preload 契约和 ConfigProvider 兼容入口；`shell` 应作为产品 Shell 容器，不再继续沉淀跨宿主 UI 装配逻辑。凡是已经由 assembly 提供的 overlay、style contract、host surface、editor host 和页面级适配，都应从 core glue 中移出、删除或转为兼容 shim。
 
 装配层职责：
 
@@ -342,6 +346,33 @@ Portal、Shell 摘要、Settings 和部分管理页已经有 UI 与 mapper，但
 
 - Web mock-regression 与 electron smoke 验证同一 assembly 标记或 overlay root 在两个宿主出现。
 
+### F8：packages/core 胶水层未随 assembly 精简（P0）
+
+现状：
+
+- `packages/core/app-shell` 仍包含 `shellHostBridge`、`shellEmbedMessaging`、`layoutHost`、`presentationHost`、`webShellHostBridge`、`electronShellHostBridge`、`installShellIframeElectronBridge` 等 bridge/presentation glue；
+- `packages/core/runtime` 仍提供 `bootMicroApp` 与运行模式检测，容易继续成为宿主差异判断入口；
+- `packages/core/shell` 同时承担 Shell 产品容器、iframe host、应用生命周期、嵌入视图和局部 UI glue；
+- `packages/core/electron-shared` 仍包含 ConfigProvider、theme/locale sync、renderer preference bridge 与 Electron notify composable；
+- assembly 已经接管 host surface、style contract、overlay、editor host 后，上述 core 层如果不收敛，就会形成“assembly 新入口 + core 旧入口”双轨架构。
+
+目标：
+
+1. 为 `packages/core` 建立胶水层削减清单，按“保留协议 / 删除 UI 装配 / 降级兼容 facade”分类；
+2. `app-shell` 只保留窗口 manifest、embed messaging、shell event bus、导航/会话协作等协议能力，不再新增 UI 装配、overlay、theme/density、editor host；
+3. `runtime` 只保留 `bootMicroApp` 和必要运行模式输入，运行时检测结果由 apps boot 转换为 assembly HostAdapter，不再向页面/feature/editor 扩散；
+4. `electron-shared` 的 theme/locale/preference bridge 与 ConfigProvider 保持兼容，但新增样式/偏好能力优先经 assembly style contract 或 boot adapter 暴露；
+5. `shell` 中与 iframe host、presentation、layout hosting 重叠的逻辑逐步迁往 app-shell 协议或 assembly host surface，Shell 包回到产品容器和组合层；
+6. 新增或调整 lint/依赖规则：`core` 不 import `nebula-assembly`，非 boot/app-shell/preload 白名单不得新增宿主检测，assembly 已覆盖能力不得在 core 新增第二套 facade。
+
+实施顺序：
+
+1. 盘点 `packages/core` glue 文件和消费者，建立删除/保留/兼容表；
+2. 从新增功能开始冻结旧入口：新增 overlay、style、editor host、host surface 只能走 assembly；
+3. 将 `layoutHost`、`presentationHost`、renderer preference bridge 等和 assembly 重叠的能力改成兼容 facade 或迁移到 boot adapter；
+4. 删除无消费者或仅历史兼容的 glue 文件，降低 `packages/core` package 数量、导出面和跨包依赖；
+5. 用 CRG/依赖检查验证调用路径减少，而不是只以“新增 assembly 包”作为完成标准。
+
 ## 8. 测试现状
 
 本次在当前提交执行：
@@ -383,6 +414,7 @@ vp exec playwright test --list
 - [x] Web/Electron/standalone 启动边界改为提供 assembly adapter（`assembly-boot` 显式 capability；试点页无宿主分支）；
 - [x] 选择 Code Editor + DAG 模块作为试点，验证 editors 消费 assembly contract；
 - [x] 建立 token/CSS variables/namespace 样式契约（挂载根 `data-nebula-*`；Tailwind 仍为实现工具）；
+- [ ] 精简 `packages/core` 存量 glue/bridge 层，减少 app-shell/runtime/shell/electron-shared 中与 assembly 重叠的宿主适配、presentation bridge、theme/locale/preference bridge；
 - [ ] Integration 页面只组合 feature；
 - [ ] 为 mapper、composable、状态机增加单元测试；
 - [ ] 按真实复用证据提升共享 feature；
@@ -409,6 +441,7 @@ vp exec playwright test --list
 - 新增或改造跨宿主组件时，必须通过 assembly adapter 注入 host capability，不得在组件内直接判断 Web/Electron；
 - 编辑器接入必须消费 editor host contract，不能在 editor 包内复制 Shell、preload 或 Web embed 适配；
 - 样式变更必须落到 token/CSS variables/namespace 或组件层样式入口，不能只靠页面级 Tailwind class 兜底；
+- assembly 覆盖的能力不得在 `packages/core` 中新增第二套 glue/facade；涉及 core 的重构必须说明删除了哪些旧入口、减少了哪些导出或调用路径；
 - 核心用户旅程有对应 Playwright 层级；
 - 真实业务完成声明必须以 real-stack 为证据。
 
@@ -436,7 +469,8 @@ vp install
 - 在后端无批量事务 API 时实现“伪批量”；
 - 在真实数据闭环前继续扩大视觉组件数量；
 - 继续为 Web、Electron、standalone 分别维护页面级 UI 适配层；
-- 把 Tailwind utility class 当作跨包样式契约。
+- 把 Tailwind utility class 当作跨包样式契约；
+- 新增 `nebula-assembly` 后继续保留与其职责重叠的 core glue 层，并把“双轨兼容”长期化。
 
 ## 12. 成功标准
 
@@ -447,7 +481,8 @@ vp install
 3. Portal、Provider、Admin 和 Settings 使用真实数据与权限；
 4. Web 与 Electron 共用窗口、认证、租户和 API 定义；
 5. Web、Electron、standalone 共用底层组件装配层，业务组件和编辑器不再手写宿主适配；
-6. App-local feature 边界清晰，共享包只来自真实复用；
-7. 样式 token、CSS variables、组件命名空间和暗色/密度配置稳定，Tailwind 只作为实现工具而非跨包契约；
-8. AuthFlow 的 MFA/恢复由真实后端状态机驱动；
-9. Mock、体验、Electron 和 real-stack 各自承担明确且不互相替代的责任。
+6. `packages/core` 中与 assembly 重叠的 glue/bridge 层被删除、收敛或降级为明确的兼容 facade，导出面和跨包调用路径实际减少；
+7. App-local feature 边界清晰，共享包只来自真实复用；
+8. 样式 token、CSS variables、组件命名空间和暗色/密度配置稳定，Tailwind 只作为实现工具而非跨包契约；
+9. AuthFlow 的 MFA/恢复由真实后端状态机驱动；
+10. Mock、体验、Electron 和 real-stack 各自承担明确且不互相替代的责任。
