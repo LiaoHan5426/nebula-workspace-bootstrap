@@ -134,6 +134,19 @@ apps → app-local features → shared features/editors/ui → core/contracts
 
 当前 `packages/ui` 更接近常规组件库：基础组件、布局组件、业务页面和编辑器入口之间需要手写 glue code；Electron 与 Web 又分别补运行环境适配。这使前端架构在“看起来分层清晰”的同时，实际开发中出现重复转换、重复 props 映射、重复样式兜底和宿主差异判断。后续优化不应继续把所有能力堆到 `nebula-ui`，而应新增一个底层组件装配层，建议包名为 `packages/ui/nebula-assembly`。
 
+必须守住的依赖方向：
+
+```text
+apps boot 边界
+  → nebula-layout / features / editors   # 只消费 assembly contract
+    → nebula-assembly                    # 装配、overlay、style、editor host
+      → nebula-ui + styles               # 无宿主判断
+
+core/runtime、app-shell、electron main 不依赖 assembly。
+```
+
+`bootMicroApp` 继续作为子应用启动协议，不直接 import assembly，避免 `core → ui`。Web/Electron/standalone 的差异只能出现在 apps boot 组装 Host Adapter 的边界；页面、feature、editor 内不得判断 `window.electron`、iframe、preload 或路由实现。现有 `ConfigProvider` 不拆除，theme/locale 仍由它同步 DOM；assembly 读取并桥接该上下文，同时补齐 density、overlay、host capability 和 editor host。
+
 装配层职责：
 
 - 提供 `createNebulaComponentContext()` / `provideNebulaAssembly()` 一类统一入口，注入 runtime、theme、locale、density、teleport target、overlay container、asset resolver、host capability 和 navigation bridge；
@@ -142,6 +155,14 @@ apps → app-local features → shared features/editors/ui → core/contracts
 - 统一 ViewModel → component props 的低层映射，减少页面、feature 和编辑器各自维护转换层；
 - 统一 overlay、message、confirm、drawer、modal、tooltip、context menu 等跨宿主行为，避免 Web/Electron 分别适配；
 - 输出可测试的 composition primitives，而不是继续制造大型“万能业务组件”。
+
+首批公共入口建议保持克制：
+
+- `createNebulaComponentContext()`、`provideNebulaAssembly()`、`useNebulaAssembly()`、`tryUseNebulaAssembly()`；
+- `createWebHostAdapter()`、`createElectronHostAdapter()`、`createStandaloneHostAdapter()`，由 apps boot 显式传入 `openExternal`、`notify`、`navigation`、asset URL 等能力，adapter 只做标准化，不把 Electron API 暴露给业务；
+- `overlay.confirm()`、`overlay.toast()` 与 `NebulaOverlayRoot`，toast 第一期可为空实现；
+- `applyStyleContract(root)`，只作用于应用挂载根或 iframe 内根节点，不默认写 `document.documentElement`，避免多子应用互相污染；
+- `useEditorHost()`，第一期只固定 theme、readonly、size/container、save command、diagnostics slot/stub、resource picker stub。快捷键 registry、命令面板可以预留类型，但不急于做复杂实现。
 
 建议分层：
 
@@ -160,7 +181,9 @@ apps                    # 只在启动边界提供 Web/Electron/standalone host 
 - 不把 `nebula-assembly` 做成新的业务组件大杂烩；
 - 不在装配层访问后端 API 或业务 store；
 - 不要求 Electron/Web 各自维护单独 UI 适配层；
-- 不为了“组件库完整度”继续扩展低复用视觉组件。
+- 不为了“组件库完整度”继续扩展低复用视觉组件；
+- 不替换 `app-shell` IPC、preload 能力模型或 `ConfigProvider`；
+- 不在首批全量迁移 Integration 自定义 modal、Settings 实体列表、MFA、generated contracts。
 
 ## 5. 产品界面现状
 
@@ -297,7 +320,7 @@ Portal、Shell 摘要、Settings 和部分管理页已经有 UI 与 mapper，但
 - 保持编辑器异步加载和 bundle budget；
 - Electron 自动更新当前仍是占位，只有接入签名、更新源和回滚验证后才能标记完成。
 
-### F7：组件装配层缺失（P0）— 三阶段首批已落地
+### F7：组件装配层缺失（P0）
 
 现状（2026-08-19 更新）：
 
@@ -309,22 +332,19 @@ Portal、Shell 摘要、Settings 和部分管理页已经有 UI 与 mapper，但
 - [ ] 全量 Dialog/Drawer/Select teleport、layout `useShellHosted` 改读 assembly、Integration 手写 modal 迁移（F7 后续）；
 - [ ] 全仓库业务代码无宿主分支 lint（后续静态检查目标）。
 
-### F7（历史描述，保留目标对照）
+三阶段落地边界：
 
-现状（改造前）：
+1. 基础骨架：建立 `nebula-assembly` 的 host/style/overlay/editor contract、boot helper 和单元测试；
+2. 宿主接线：Web/Electron/sub-web boot 注册 assembly adapter，接入 `NebulaOverlayRoot`，Settings confirm 迁移到 assembly overlay；
+3. 编辑器试点：以 Code Editor + DAG 作为最小真实消费，验证编辑器只消费 editor host contract，不直接适配宿主。
 
-- `nebula-ui` 承担了基础组件库角色，但没有稳定承载运行环境能力、overlay 容器、样式 token、编辑器 host contract 和跨宿主行为；
-- Web/Electron/standalone 的差异仍在 boot、页面、feature、preload bridge 或局部 composable 中分散处理；
-- `packages/editors` 各模块继续集成时，需要重复解决主题、尺寸、快捷键、资源选择器、保存事件、诊断面板、overlay 和宿主通信；
-- Tailwind CSS 在多包、多入口、多宿主场景下存在样式注入和规则生效不稳定问题，页面显示与设计预期可能漂移。
+后续重点：
 
-目标：
-
-1. 新增 `packages/ui/nebula-assembly`，定义 host adapter、style adapter、editor host、overlay service 和全局组件上下文；
-2. `apps/web`、`apps/electron`、`apps/sub-web/*` 只在启动边界注册 adapter，业务页面和编辑器不再手写宿主判断；
-3. `packages/editors` 通过 assembly contract 接入主题、命令、资源选择、保存和诊断，不再为每个宿主写独立胶水层；
-4. 样式配置以 CSS variables/design tokens/namespace 为稳定契约，Tailwind utility 退回实现细节；
-5. 提供 `assembly` 层单元测试和至少一个 Web/Electron 共享 smoke，证明同一组件装配在两个宿主下无需业务改动。
+- `nebula-layout` 的 `useShellHosted` 优先读取 assembly `host.surface`，无 context 时再 fallback app-shell；
+- `NebulaDialog`、Drawer、Select 等基础组件支持可选 overlay container 注入，未注入时仍 fallback body；
+- Integration 手写 modal 只按真实收益逐步迁移，不为一次性清理扩大风险；
+- 补充静态检查或 lint，阻止页面、feature、editor 新增 `window.electron` / iframe / preload 宿主判断；
+- Web mock-regression 与 electron smoke 验证同一 assembly 标记或 overlay root 在两个宿主出现。
 
 ## 8. 测试现状
 
