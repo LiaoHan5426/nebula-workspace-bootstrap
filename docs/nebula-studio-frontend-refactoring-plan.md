@@ -1,7 +1,7 @@
 # Nebula Studio 前端架构现状与增量重构计划
 
-> 文档版本：v3.0
-> 最后更新：2026-08-01
+> 文档版本：v3.1
+> 最后更新：2026-08-19
 > 代码基线：`nebula-studio@5a36a7e09787889607d53ddea65b3e25b98b5397`
 > 本文只描述当前代码和剩余增量工作；已完成的历史阶段不再作为待办重复保留。
 
@@ -13,7 +13,8 @@ Nebula Studio 已完成宿主、窗口配置、preload、认证、运行时、�
 2. generated contracts 业务采用不完整；
 3. Integration 的 feature 主要仍是应用内边界；
 4. MFA/恢复只有前端状态容器，后端契约未实现；
-5. Settings 存量实体页面和跨应用真实数据仍需收口。
+5. Settings 存量实体页面和跨应用真实数据仍需收口；
+6. 组件库仍按常规 UI 组件库思路演进，导致页面、编辑器、Web/Electron 宿主之间出现过多转换层和适配层。下一阶段应增加底层组件装配层，把组件、运行环境能力、样式 token 和编辑器接入统一收口，而不是继续扩大纯展示组件数量。
 
 ## 2. 技术与工作区基线
 
@@ -73,6 +74,7 @@ packages/
 ├── features/
 │   └── use-confirm          # 当前唯一正式共享 feature
 ├── ui/
+│   ├── nebula-assembly       # 目标新增：底层组件装配层
 │   ├── nebula-agent
 │   ├── nebula-layout
 │   └── nebula-ui
@@ -92,6 +94,7 @@ apps → app-local features → shared features/editors/ui → core/contracts
 
 - `core` 不依赖 `apps` 或业务 feature；
 - `ui` 不访问业务 API；
+- `ui/nebula-ui` 只提供无宿主假设的基础组件，`ui/nebula-assembly` 负责组件装配、运行环境能力注入和样式适配；
 - 页面不重新声明服务端 DTO；
 - Electron 与 Web 不维护两套窗口、认证或 API target；
 - feature 不直接维护另一套全局 Session/Tenant 存储。
@@ -126,6 +129,38 @@ apps → app-local features → shared features/editors/ui → core/contracts
 - `app-shell` 负责 Web/Electron 的会话同步和 embed 导航协议。
 - `tenant` 包负责加载、选择和切换租户；子应用不得新建私有租户存储键。
 - Shell Event Bus 已有 auth、tenant、theme 等跨应用事件，但真实数据失效仍需 real-stack 验证。
+
+### 4.4 底层组件装配层（目标新增）
+
+当前 `packages/ui` 更接近常规组件库：基础组件、布局组件、业务页面和编辑器入口之间需要手写 glue code；Electron 与 Web 又分别补运行环境适配。这使前端架构在“看起来分层清晰”的同时，实际开发中出现重复转换、重复 props 映射、重复样式兜底和宿主差异判断。后续优化不应继续把所有能力堆到 `nebula-ui`，而应新增一个底层组件装配层，建议包名为 `packages/ui/nebula-assembly`。
+
+装配层职责：
+
+- 提供 `createNebulaComponentContext()` / `provideNebulaAssembly()` 一类统一入口，注入 runtime、theme、locale、density、teleport target、overlay container、asset resolver、host capability 和 navigation bridge；
+- 面向 Web、Electron、standalone 子应用暴露同一套 adapter contract，由宿主在启动时提供能力，不允许业务组件直接判断 `window.electron`、iframe、preload 或路由实现；
+- 把 `packages/editors` 的 Code/DAG/Flow/低代码表单接入抽象为 editor host contract，例如尺寸、主题、快捷键、只读态、命令面板、文件/资源选择器、诊断面板和保存事件；
+- 统一 ViewModel → component props 的低层映射，减少页面、feature 和编辑器各自维护转换层；
+- 统一 overlay、message、confirm、drawer、modal、tooltip、context menu 等跨宿主行为，避免 Web/Electron 分别适配；
+- 输出可测试的 composition primitives，而不是继续制造大型“万能业务组件”。
+
+建议分层：
+
+```text
+nebula-ui               # 纯基础组件与设计 token 消费，不感知宿主
+nebula-layout           # Shell/layout primitives，依赖 assembly context
+nebula-assembly         # 组件装配、宿主能力、样式适配、editor host contract
+features/editors        # 只消费 assembly contract，不直接适配 Web/Electron
+apps                    # 只在启动边界提供 Web/Electron/standalone host adapter
+```
+
+样式治理也应从“页面内临时 Tailwind class”转为“token + CSS 变量 + 组件命名空间”的组合：Tailwind 可以继续作为 utility 生成工具，但不能成为跨包样式契约。更接近 Element Plus 的做法是：基础样式、主题变量、尺寸、暗色模式和组件状态类由组件库/装配层稳定输出，应用只覆盖 token 或命名空间变量。这样可以解决当前 Tailwind CSS 集成部分规则不生效、显示与预期不一致、不同子应用样式注入顺序不稳定的问题。
+
+非目标：
+
+- 不把 `nebula-assembly` 做成新的业务组件大杂烩；
+- 不在装配层访问后端 API 或业务 store；
+- 不要求 Electron/Web 各自维护单独 UI 适配层；
+- 不为了“组件库完整度”继续扩展低复用视觉组件。
 
 ## 5. 产品界面现状
 
@@ -262,6 +297,35 @@ Portal、Shell 摘要、Settings 和部分管理页已经有 UI 与 mapper，但
 - 保持编辑器异步加载和 bundle budget；
 - Electron 自动更新当前仍是占位，只有接入签名、更新源和回滚验证后才能标记完成。
 
+### F7：组件装配层缺失（P0）— 三阶段首批已落地
+
+现状（2026-08-19 更新）：
+
+- [x] 新增 `packages/ui/nebula-assembly` 与 `apps/sub-web/assembly-boot`（boot 边界显式传入 capability）；
+- [x] Web/Electron/sub-web 五入口通过 `wrapSubAppWithAssembly` + `installAssemblyForSubApp` 注册 adapter；
+- [x] OverlayRoot + Settings confirm 经 assembly overlay；`use-confirm` 薄转发；
+- [x] Code Editor + DAG Editor 试点消费 `EditorHost`（theme/readonly/size/save/diagnostics stub）；
+- [x] `applyStyleContract(root)` 仅作用于子应用挂载根，不写 `document.documentElement`；
+- [ ] 全量 Dialog/Drawer/Select teleport、layout `useShellHosted` 改读 assembly、Integration 手写 modal 迁移（F7 后续）；
+- [ ] 全仓库业务代码无宿主分支 lint（后续静态检查目标）。
+
+### F7（历史描述，保留目标对照）
+
+现状（改造前）：
+
+- `nebula-ui` 承担了基础组件库角色，但没有稳定承载运行环境能力、overlay 容器、样式 token、编辑器 host contract 和跨宿主行为；
+- Web/Electron/standalone 的差异仍在 boot、页面、feature、preload bridge 或局部 composable 中分散处理；
+- `packages/editors` 各模块继续集成时，需要重复解决主题、尺寸、快捷键、资源选择器、保存事件、诊断面板、overlay 和宿主通信；
+- Tailwind CSS 在多包、多入口、多宿主场景下存在样式注入和规则生效不稳定问题，页面显示与设计预期可能漂移。
+
+目标：
+
+1. 新增 `packages/ui/nebula-assembly`，定义 host adapter、style adapter、editor host、overlay service 和全局组件上下文；
+2. `apps/web`、`apps/electron`、`apps/sub-web/*` 只在启动边界注册 adapter，业务页面和编辑器不再手写宿主判断；
+3. `packages/editors` 通过 assembly contract 接入主题、命令、资源选择、保存和诊断，不再为每个宿主写独立胶水层；
+4. 样式配置以 CSS variables/design tokens/namespace 为稳定契约，Tailwind utility 退回实现细节；
+5. 提供 `assembly` 层单元测试和至少一个 Web/Electron 共享 smoke，证明同一组件装配在两个宿主下无需业务改动。
+
 ## 8. 测试现状
 
 本次在当前提交执行：
@@ -299,6 +363,10 @@ vp exec playwright test --list
 
 ### Phase C：应用内边界收敛
 
+- [x] 新增 `packages/ui/nebula-assembly`，收口 host adapter、style adapter、overlay service 和 editor host contract（F7 三阶段 1–3）；
+- [x] Web/Electron/standalone 启动边界改为提供 assembly adapter（`assembly-boot` 显式 capability；试点页无宿主分支）；
+- [x] 选择 Code Editor + DAG 模块作为试点，验证 editors 消费 assembly contract；
+- [x] 建立 token/CSS variables/namespace 样式契约（挂载根 `data-nebula-*`；Tailwind 仍为实现工具）；
 - [ ] Integration 页面只组合 feature；
 - [ ] 为 mapper、composable、状态机增加单元测试；
 - [ ] 按真实复用证据提升共享 feature；
@@ -322,6 +390,9 @@ vp exec playwright test --list
 - 新 API 有 adapter/mapper 测试；
 - 新页面有 loading、empty、error、partial、forbidden 状态；
 - Web/Electron 共享能力定义；
+- 新增或改造跨宿主组件时，必须通过 assembly adapter 注入 host capability，不得在组件内直接判断 Web/Electron；
+- 编辑器接入必须消费 editor host contract，不能在 editor 包内复制 Shell、preload 或 Web embed 适配；
+- 样式变更必须落到 token/CSS variables/namespace 或组件层样式入口，不能只靠页面级 Tailwind class 兜底；
 - 核心用户旅程有对应 Playwright 层级；
 - 真实业务完成声明必须以 real-stack 为证据。
 
@@ -347,7 +418,9 @@ vp install
 - 立即把 Integration 拆成多个独立应用；
 - 为满足目录数量创建空 feature 包；
 - 在后端无批量事务 API 时实现“伪批量”；
-- 在真实数据闭环前继续扩大视觉组件数量。
+- 在真实数据闭环前继续扩大视觉组件数量；
+- 继续为 Web、Electron、standalone 分别维护页面级 UI 适配层；
+- 把 Tailwind utility class 当作跨包样式契约。
 
 ## 12. 成功标准
 
@@ -357,6 +430,8 @@ vp install
 2. 后端字段漂移在生成、编译或 E2E 阶段被阻止；
 3. Portal、Provider、Admin 和 Settings 使用真实数据与权限；
 4. Web 与 Electron 共用窗口、认证、租户和 API 定义；
-5. App-local feature 边界清晰，共享包只来自真实复用；
-6. AuthFlow 的 MFA/恢复由真实后端状态机驱动；
-7. Mock、体验、Electron 和 real-stack 各自承担明确且不互相替代的责任。
+5. Web、Electron、standalone 共用底层组件装配层，业务组件和编辑器不再手写宿主适配；
+6. App-local feature 边界清晰，共享包只来自真实复用；
+7. 样式 token、CSS variables、组件命名空间和暗色/密度配置稳定，Tailwind 只作为实现工具而非跨包契约；
+8. AuthFlow 的 MFA/恢复由真实后端状态机驱动；
+9. Mock、体验、Electron 和 real-stack 各自承担明确且不互相替代的责任。
