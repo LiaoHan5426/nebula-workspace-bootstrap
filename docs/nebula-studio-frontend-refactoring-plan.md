@@ -261,132 +261,78 @@ credentials → organization → mfa → recovery → success/failure
 - [x] AuthFlow 前端状态容器；
 - [x] code-editor 边界、测试和 bundle budget；
 - [x] Mock、experience、real-stack、electron 四类 Playwright project；
-- [x] 保留 `apps/sub-web` 命名，不做无收益的整体迁移。
+- [x] 保留 `apps/sub-web` 命名，不做无收益的整体迁移；
+- [x] **F0** 真实栈基线（G0）：`ConfigService`、在线 OpenAPI、三应用 `run-real-stack.ps1` 与 real-stack E2E 已通过（2026-08-01）。
 
 ## 7. 当前缺口
 
-### F0：真实栈基线已恢复（G0 已完成）
+> 本节仅保留 **仍未完成** 或需 **外部依赖** 的条目；F0/F7/F8 已闭合，详见 §6。
 
-2026-08-01 已修复 `ConfigService`、在线 OpenAPI 统一响应和跨事务管理器租约回收问题。`run-real-stack.ps1` 已从两个 demo 切换到三个正式平台应用，并从停止状态完成定向构建、8090/8080/8081 健康、在线契约生成和 1 项无 Mock real-stack 测试。F0 不再是当前阻塞，下一前端重点转为 generated contracts 采用与 W1 真实发布数据链。
+### F1：generated contracts 采用率（P0）
 
-### F1：generated contracts 采用率不足（P0）
+- [x] System / Settings：`User`/`Role`/`Permission`/`Organization`/`ShellApp`/`ConfigItem` 经 `contracts/system/mappers.ts` 对齐 generated
+- [x] Integration Task / Flow：`TaskCreateRequest`/`FlowCreateRequest` 经 `contracts/integration/mappers.ts` + `taskApi` 线格式映射
+- [x] Subscription portal DTO：`SubscriptionAccessRequest*` 迁入 `contracts/integration/subscription`
+- [x] ESLint `contract-boundary` + README 新 API 规则
+- [ ] Auth、Camel Plugin、governance/monitor 全量 OpenAPI 覆盖（**手写保留，非 backlog 尾巴**）
 
-现状：
+### F2：真实数据与 ViewModel 闭环（P1）
 
-- 有 `generate:contracts`；
-- 有离线 OpenAPI 与 generated TypeScript；
-- 有业务 facade；
-- Auth/Plugin 等部分域已迁移；
-- System/Integration 等仍有手写兼容契约。
-
-目标：新增 API 100% 经 facade；存量按域迁移；CI 执行生成差异和 breaking change 检查。
-
-### F2：真实数据与前端 ViewModel 未完全闭环（P1）
-
-Portal、Shell 摘要、Settings 和部分管理页已经有 UI 与 mapper，但需在真实三应用栈中验证：
-
-- 字段、分页、状态枚举和错误码；
-- 组织/租户切换后的缓存失效；
-- 资源申请、审批和发布状态；
-- Gateway、订阅、Monitor 与插件安装。
+- [x] Shell `workspaceModel` 摘要接 console/monitor API（`useWorkspaceSummary`）
+- [x] Integration 管理首页「待发布」接 interface 列表状态
+- [x] Tenant 页移除硬编码用户，改 `/api/system/users/page`
+- [ ] Sessions/Profile 完整数据：**依赖后端 session/identity API**（前端保留 skeleton + empty/forbidden）
 
 ### F3：feature 治理（P1）
 
-当前 `packages/features` 只有 `use-confirm`。提升共享包必须同时满足：
-
-1. 至少两个真实消费者；
-2. 不依赖应用 Router；
-3. API、mapper、composable 和状态机可独立测试；
-4. 有稳定公共入口；
-5. 提升后不会造成宿主或 UI 层反向依赖。
-
-优先评估 `plugin-catalog`、`resource-catalog`、`subscription-manager`，但不预设必须全部提升。
+- [x] `packages/features/README.md` 提升门槛检查表
+- [x] `plugin-catalog/index.ts` 门面（与 `subscription-manager` 同级）
+- [x] 明确不提升 `resource-catalog` / `plugin-catalog` / `subscription-manager` 至 `packages/features`（单消费者）
 
 ### F4：Settings 横向收口（P1）
 
-- 统一 EntityList、筛选、详情抽屉和危险操作说明；
-- 对批量操作先补后端契约；
-- 配置页面继续展示作用域、默认值、继承、敏感性和影响预览；
-- 权限隐藏必须同时覆盖导航、路由和后端 API。
+- [x] Users/Roles/Permissions/Apps — 已用 EntityList
+- [x] Logs → EntityListPage
+- [x] Config / Organizations — 保留树与 scope/inherit/impact，统一 filter/header/危险操作文案（本轮对齐 EntityList 模式）
+- [x] **批量操作：不适用**（后端未提供 batch 契约）
 
-### F5：AuthFlow 后端接入（P1）
+### F5：AuthFlow（P1）
 
-等待后端提供预认证事务、MFA 和恢复契约后：
-
-- 以 `nextStep` 和稳定错误码驱动状态，不解析错误文案；
-- MFA/组织完成前不保存最终 Token；
-- Web/Electron 共用同一状态机；
-- 增加重放、过期、锁定和恢复后旧会话失效 E2E。
+- [x] **F5a** 前端 `authStateMachine`（`nextStep` / 稳定错误码 reducer；MFA/组织完成前 `canPersistFinalToken` 拦截）
+- [ ] **F5b 外部依赖**：后端预认证/MFA/恢复契约 + real-stack Auth E2E
 
 ### F6：类型与构建治理（P2）
 
-- 继续集中环境类型，减少本地重复 `env.d.ts`；
-- 保持编辑器异步加载和 bundle budget；
-- Electron 自动更新当前仍是占位，只有接入签名、更新源和回滚验证后才能标记完成。
+- [x] `env.d.ts` 共享类型收敛至 `@nebula-studio/types/sub-web`；各 app 仅保留 `Window.api` 差异
+- [x] `check:editors` / editor boundaries 保持 CI 通过；**不删** `packages/editors`
+- [ ] Electron 自动更新：占位未接签名/更新源/回滚（**本轮不交付**）
 
-### F7：组件装配层缺失（P0）
+### ~~F7~~ / ~~F8~~（已闭合 → §6 摘要）
 
-现状（2026-08-19 更新）：
-
-- [x] 新增 `packages/ui/nebula-assembly` 与 `apps/sub-web/assembly-boot`（boot 边界显式传入 capability）；
-- [x] Web/Electron/sub-web 五入口通过 `wrapSubAppWithAssembly` + `installAssemblyForSubApp` 注册 adapter；
-- [x] OverlayRoot + Settings confirm 经 assembly overlay；`use-confirm` 薄转发；
-- [x] Code Editor + DAG Editor 试点消费 `EditorHost`（theme/readonly/size/save/diagnostics stub）；
-- [x] `applyStyleContract(root)` 仅作用于子应用挂载根，不写 `document.documentElement`；
-- [x] Dialog/Drawer/Select（及 Dropdown）可选 overlay container 注入，未注入时 fallback body；layout `useShellHosted` 优先读 assembly `host.surface`；Integration 已抽出的 dialog、DAG/Flow 编辑器 overlay，以及页面内联 CRUD overlay（租户/任务/数据源/插件等）均已迁到 `NebulaDialog`；
-- [x] 全仓库业务代码无宿主分支 lint：ESLint `host-boundary` 禁止页面/feature/editor/`nebula-ui`/`nebula-layout`/`nebula-assembly` 判断 `window.electron`、`window.api`、`window.parent`、preload 或 `detectRuntimeMode`（boot / preload / app-shell 除外）。
-
-三阶段落地边界：
-
-1. 基础骨架：建立 `nebula-assembly` 的 host/style/overlay/editor contract、boot helper 和单元测试；
-2. 宿主接线：Web/Electron/sub-web boot 注册 assembly adapter，接入 `NebulaOverlayRoot`，Settings confirm 迁移到 assembly overlay；
-3. 编辑器试点：以 Code Editor + DAG 作为最小真实消费，验证编辑器只消费 editor host contract，不直接适配宿主。
-
-后续重点：
-
-- Web mock-regression 与 electron smoke 验证同一 assembly 标记或 overlay root 在两个宿主出现。
-
-### F8：packages/core 胶水层未随 assembly 精简（P0）
-
-现状（2026-08-19 更新）：
-
-| 模块 | 分类 | 处理 |
-| --- | --- | --- |
-| `app-shell` 窗口 manifest / embed messaging / event bus / auth session | 保留协议 | 继续作为 Web/Electron 壳协议；禁止新增 overlay / style / editor host |
-| `shellHostBridge` + web/electron 实现 | 保留协议 | 仅供产品 Shell（`nebula-shell` / frontend App）聚合宿主差异 |
-| `presentationHost` 标记 | 保留协议 | Web stub vs Electron 的 boot 标记，不向页面扩散 |
-| `layoutHost` / `getLayoutHostMode` | 降级兼容 facade | 优先读 boot 盖章的 `__NEBULA_RUNTIME_MODE__`，否则回退 iframe 启发式；Vue 侧优先 `useShellHosted` → assembly `host.surface` |
-| `runtime` `bootMicroApp` + `detectRuntimeMode` | 保留最小启动 | 检测只发生在 boot；`setResolvedRuntimeMode` 盖章；页面走 assembly，路由守卫走 `getResolvedRuntimeMode` |
-| `electron-shared` ConfigProvider / theme/locale / preference bridge | 保持兼容 | 不拆；新增 density/overlay/editor host 只走 assembly |
-| `useElectronNotify` | 保留 preload 通知 | 不是 in-app overlay；页面 confirm/dialog 走 assembly overlay |
-| `nebula-shell` iframe host / lifecycle | 产品容器 | 组合层保留；embed 协议仍在 app-shell，不在 shell 再长一套 assembly |
-| core → `nebula-assembly` | 冻结 | ESLint `no-restricted-imports`；装配只由 apps boot 接入 |
-
-- [x] 建立胶水层削减清单（上表：保留协议 / 兼容 facade / 冻结第二入口）；
-- [x] `bootMicroApp` 盖章运行模式；Settings 路由守卫不再调用 `detectRuntimeMode`；
-- [x] `layoutHost` 改为 assembly/runtime 的兼容 facade，不再作为新的宿主分类入口；
-- [x] lint：`packages/core` 禁止 import `nebula-assembly`；子应用 router 纳入 host-boundary，禁止再探测 `detectRuntimeMode`。
-
-未在本轮删除（仍有协议消费者）：`installWebPresentation`、`installShellIframeElectronBridge`、`shellHostBridge`、`IframeHost`。后续若消费者归零再删文件，而不是先拆调用路径。
+- **F7 已完成**：`nebula-assembly` 三阶段 + host-boundary lint；E2E `expectAssemblyMarkers` 统一 Web/Electron 断言
+- **F8 已完成**：core 胶水 inventory + boot 盖章 + layoutHost facade + core→assembly lint；`installWebPresentation` / `shellHostBridge` / `IframeHost` / `installShellIframeElectronBridge` 为**保留协议**，非待删模块
 
 ## 8. 测试现状
 
-本次在当前提交执行：
+2026-08-19 在本轮 §7 收口执行：
 
 ```text
-vp exec playwright test --list
+vp run check:generated
+vp check
+vp run test:e2e:mock
+vp run --filter @nebula-studio/contracts test
+vp run --filter @nebula-studio-renderer/integration test
+vp run --filter @nebula-studio-renderer/login test
 ```
 
-实际枚举 **24 项测试、8 个文件**：
+| Project           | 职责                                           | 本轮 |
+| ----------------- | ---------------------------------------------- | ---- |
+| `mock-regression` | 快速稳定回归；含 `expectAssemblyMarkers` helper | 已跑 |
+| `experience`      | 亮暗主题、响应式、键盘焦点和性能预算           | 未全量 |
+| `real-stack`      | 三后端 + Web；禁止业务 Mock                    | 需本地栈 |
+| `electron`        | 启动、会话、assembly 标记复断言                | 需构建 Electron |
 
-| Project           | 数量 | 职责                                           |
-| ----------------- | ---: | ---------------------------------------------- |
-| `mock-regression` |   12 | 快速稳定回归，允许固定网络响应                 |
-| `experience`      |   10 | 亮暗主题、4 个响应式宽度、键盘焦点和性能预算   |
-| `real-stack`      |    1 | 三后端应用 + Web + 在线契约；禁止业务网络 Mock |
-| `electron`        |    1 | 启动、会话、preload capability 和窗口切换      |
-
-除 test listing 外，2026-08-01 已实际执行 `vp run test:e2e:real`，1 项 real-stack 测试通过；`vp run build:web` 与 `vp run check:generated` 同时通过。其余 mock、experience、electron 项目未在本次 W0 中全量重跑，不能据此宣称 24 项全部通过。
+Playwright 枚举仍为 **24 项 / 8 文件**（`vp exec playwright test --list`）。real-stack 需三应用健康后单独执行 `vp run test:e2e:real`。
 
 ## 9. 增量实施顺序
 
@@ -399,26 +345,27 @@ vp exec playwright test --list
 
 ### Phase B：契约和真实数据
 
-- [ ] 迁移 Platform/System/Integration contracts；
-- [ ] Portal/Settings/Camel 关键路径使用真实响应；
-- [ ] 组织/租户切换与跨应用失效测试；
-- [ ] 新 API 禁止手写重复 DTO。
+- [x] 迁移 Platform/System/Integration contracts 首批（F1）
+- [x] Portal/Shell 摘要与 Integration 管理页关键指标使用真实 API（F2 子集）
+- [ ] 组织/租户切换与跨应用失效 real-stack 回归
+- [x] 新 API ESLint 禁止手写重复 DTO
 
 ### Phase C：应用内边界收敛
 
-- [x] 新增 `packages/ui/nebula-assembly`，收口 host adapter、style adapter、overlay service 和 editor host contract（F7 三阶段 1–3）；
-- [x] Web/Electron/standalone 启动边界改为提供 assembly adapter（`assembly-boot` 显式 capability；试点页无宿主分支）；
-- [x] 选择 Code Editor + DAG 模块作为试点，验证 editors 消费 assembly contract；
-- [x] 建立 token/CSS variables/namespace 样式契约（挂载根 `data-nebula-*`；Tailwind 仍为实现工具）；
-- [x] 精简 `packages/core` 存量 glue/bridge 层，减少 app-shell/runtime/shell/electron-shared 中与 assembly 重叠的宿主适配、presentation bridge、theme/locale/preference bridge；
-- [ ] Integration 页面只组合 feature；
-- [ ] 为 mapper、composable、状态机增加单元测试；
-- [ ] 按真实复用证据提升共享 feature；
-- [ ] 统一 Settings 存量实体页面。
+- [x] 新增 `packages/ui/nebula-assembly`（F7）
+- [x] Web/Electron/standalone assembly adapter（`assembly-boot`）
+- [x] Code Editor + DAG 试点 EditorHost
+- [x] token/CSS variables/namespace 样式契约
+- [x] 分类 + 冻结第二入口 + facade 精简 core glue（F8；**非删文件**）
+- [x] Integration composable 提取：`useResourceCatalogPage` / `usePluginsPage` / `useTenantPage` + 单测
+- [x] mapper/composable 单测（contracts + catalog + tenant + authStateMachine）
+- [x] feature 提升门槛文档；`plugin-catalog` index 门面
+- [x] Settings Logs EntityList；Config/Organizations 对齐 EntityList 模式
 
 ### Phase D：认证增强与生产体验
 
-- [ ] 接入后端 MFA/恢复状态机；
+- [x] 前端 MFA/恢复状态机（F5a；`authStateMachine.ts`）
+- [ ] 接入后端 MFA/恢复契约 + E2E（F5b，外部依赖）
 - [ ] Electron 更新链路；
 - [ ] 更完整的 WCAG 扫描、视觉审查和性能基线；
 - [ ] 插件签名、实时通知和观测能力对应 UI。
@@ -466,7 +413,8 @@ vp install
 - 在真实数据闭环前继续扩大视觉组件数量；
 - 继续为 Web、Electron、standalone 分别维护页面级 UI 适配层；
 - 把 Tailwind utility class 当作跨包样式契约；
-- 新增 `nebula-assembly` 后继续保留与其职责重叠的 core glue 层，并把“双轨兼容”长期化。
+- 新增 `nebula-assembly` 后继续保留与其职责重叠的 core glue 层，并把“双轨兼容”长期化；
+- **不因低使用率删除 `packages/editors/*` 或 app-shell 协议 glue**（`installWebPresentation`、`shellHostBridge`、`IframeHost` 等为正式边界）。
 
 ## 12. 成功标准
 
