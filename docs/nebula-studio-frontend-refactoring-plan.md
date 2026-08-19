@@ -348,30 +348,26 @@ Portal、Shell 摘要、Settings 和部分管理页已经有 UI 与 mapper，但
 
 ### F8：packages/core 胶水层未随 assembly 精简（P0）
 
-现状：
+现状（2026-08-19 更新）：
 
-- `packages/core/app-shell` 仍包含 `shellHostBridge`、`shellEmbedMessaging`、`layoutHost`、`presentationHost`、`webShellHostBridge`、`electronShellHostBridge`、`installShellIframeElectronBridge` 等 bridge/presentation glue；
-- `packages/core/runtime` 仍提供 `bootMicroApp` 与运行模式检测，容易继续成为宿主差异判断入口；
-- `packages/core/shell` 同时承担 Shell 产品容器、iframe host、应用生命周期、嵌入视图和局部 UI glue；
-- `packages/core/electron-shared` 仍包含 ConfigProvider、theme/locale sync、renderer preference bridge 与 Electron notify composable；
-- assembly 已经接管 host surface、style contract、overlay、editor host 后，上述 core 层如果不收敛，就会形成“assembly 新入口 + core 旧入口”双轨架构。
+| 模块 | 分类 | 处理 |
+| --- | --- | --- |
+| `app-shell` 窗口 manifest / embed messaging / event bus / auth session | 保留协议 | 继续作为 Web/Electron 壳协议；禁止新增 overlay / style / editor host |
+| `shellHostBridge` + web/electron 实现 | 保留协议 | 仅供产品 Shell（`nebula-shell` / frontend App）聚合宿主差异 |
+| `presentationHost` 标记 | 保留协议 | Web stub vs Electron 的 boot 标记，不向页面扩散 |
+| `layoutHost` / `getLayoutHostMode` | 降级兼容 facade | 优先读 boot 盖章的 `__NEBULA_RUNTIME_MODE__`，否则回退 iframe 启发式；Vue 侧优先 `useShellHosted` → assembly `host.surface` |
+| `runtime` `bootMicroApp` + `detectRuntimeMode` | 保留最小启动 | 检测只发生在 boot；`setResolvedRuntimeMode` 盖章；页面走 assembly，路由守卫走 `getResolvedRuntimeMode` |
+| `electron-shared` ConfigProvider / theme/locale / preference bridge | 保持兼容 | 不拆；新增 density/overlay/editor host 只走 assembly |
+| `useElectronNotify` | 保留 preload 通知 | 不是 in-app overlay；页面 confirm/dialog 走 assembly overlay |
+| `nebula-shell` iframe host / lifecycle | 产品容器 | 组合层保留；embed 协议仍在 app-shell，不在 shell 再长一套 assembly |
+| core → `nebula-assembly` | 冻结 | ESLint `no-restricted-imports`；装配只由 apps boot 接入 |
 
-目标：
+- [x] 建立胶水层削减清单（上表：保留协议 / 兼容 facade / 冻结第二入口）；
+- [x] `bootMicroApp` 盖章运行模式；Settings 路由守卫不再调用 `detectRuntimeMode`；
+- [x] `layoutHost` 改为 assembly/runtime 的兼容 facade，不再作为新的宿主分类入口；
+- [x] lint：`packages/core` 禁止 import `nebula-assembly`；子应用 router 纳入 host-boundary，禁止再探测 `detectRuntimeMode`。
 
-1. 为 `packages/core` 建立胶水层削减清单，按“保留协议 / 删除 UI 装配 / 降级兼容 facade”分类；
-2. `app-shell` 只保留窗口 manifest、embed messaging、shell event bus、导航/会话协作等协议能力，不再新增 UI 装配、overlay、theme/density、editor host；
-3. `runtime` 只保留 `bootMicroApp` 和必要运行模式输入，运行时检测结果由 apps boot 转换为 assembly HostAdapter，不再向页面/feature/editor 扩散；
-4. `electron-shared` 的 theme/locale/preference bridge 与 ConfigProvider 保持兼容，但新增样式/偏好能力优先经 assembly style contract 或 boot adapter 暴露；
-5. `shell` 中与 iframe host、presentation、layout hosting 重叠的逻辑逐步迁往 app-shell 协议或 assembly host surface，Shell 包回到产品容器和组合层；
-6. 新增或调整 lint/依赖规则：`core` 不 import `nebula-assembly`，非 boot/app-shell/preload 白名单不得新增宿主检测，assembly 已覆盖能力不得在 core 新增第二套 facade。
-
-实施顺序：
-
-1. 盘点 `packages/core` glue 文件和消费者，建立删除/保留/兼容表；
-2. 从新增功能开始冻结旧入口：新增 overlay、style、editor host、host surface 只能走 assembly；
-3. 将 `layoutHost`、`presentationHost`、renderer preference bridge 等和 assembly 重叠的能力改成兼容 facade 或迁移到 boot adapter；
-4. 删除无消费者或仅历史兼容的 glue 文件，降低 `packages/core` package 数量、导出面和跨包依赖；
-5. 用 CRG/依赖检查验证调用路径减少，而不是只以“新增 assembly 包”作为完成标准。
+未在本轮删除（仍有协议消费者）：`installWebPresentation`、`installShellIframeElectronBridge`、`shellHostBridge`、`IframeHost`。后续若消费者归零再删文件，而不是先拆调用路径。
 
 ## 8. 测试现状
 
@@ -414,7 +410,7 @@ vp exec playwright test --list
 - [x] Web/Electron/standalone 启动边界改为提供 assembly adapter（`assembly-boot` 显式 capability；试点页无宿主分支）；
 - [x] 选择 Code Editor + DAG 模块作为试点，验证 editors 消费 assembly contract；
 - [x] 建立 token/CSS variables/namespace 样式契约（挂载根 `data-nebula-*`；Tailwind 仍为实现工具）；
-- [ ] 精简 `packages/core` 存量 glue/bridge 层，减少 app-shell/runtime/shell/electron-shared 中与 assembly 重叠的宿主适配、presentation bridge、theme/locale/preference bridge；
+- [x] 精简 `packages/core` 存量 glue/bridge 层，减少 app-shell/runtime/shell/electron-shared 中与 assembly 重叠的宿主适配、presentation bridge、theme/locale/preference bridge；
 - [ ] Integration 页面只组合 feature；
 - [ ] 为 mapper、composable、状态机增加单元测试；
 - [ ] 按真实复用证据提升共享 feature；
