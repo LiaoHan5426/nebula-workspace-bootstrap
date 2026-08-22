@@ -110,7 +110,7 @@ apps → app-local features → shared features/editors/ui → core/contracts
 
 - Web/Electron renderer；
 - embed entry；
-- API base 与 8090/8080/8081 target；
+- 后端 `apiTargets`（platform/console/executor origin）；浏览器 API 路径前缀不在此配置；
 - label、category、help key、搜索关键词和角色；
 - preload capability；
 - display order。
@@ -132,7 +132,7 @@ apps → app-local features → shared features/editors/ui → core/contracts
 
 - `shell.web`、`shell.electron.rendererEntry`、`shell.embedQuery`；
 - 每个 sub-web 的 `standalone.port`、`standalone.basePath`、`proxyPreset`、`displayPath`；
-- API namespace 到 proxy target 的映射，例如 `console`、`executor`、`platform`、`system`、`auth`、`governance`；
+- 仅配置 `apiTargets`（platform/console/executor origin）；API 路径前缀按 target 分组，作为代码黑盒，调用形态为 `GENERATED_API_NAMESPACES.<target>.<name>`；
 - real-stack OpenAPI 与健康检查地址；
 - Playwright project 的默认 baseURL 与允许 mock 的 route pattern；
 - dev/prod 差异只通过 profile 覆盖，不允许在业务代码里拼接端口。
@@ -299,7 +299,7 @@ credentials → organization → mfa → recovery → success/failure
 - [x] Mock、experience、real-stack、electron 四类 Playwright project；
 - [x] 保留 `apps/sub-web` 命名，不做无收益的整体迁移；
 - [x] **F0** 真实栈基线（G0）：`ConfigService`、在线 OpenAPI、三应用 `run-real-stack.ps1` 与 real-stack E2E 已通过（2026-08-01）。
-- [x] **F9** 运行形态地址配置：扩展既有 `configs/windows.json` / schema，生成 runtime address、API namespace、Vite proxy、Playwright、real-stack 和 contract endpoint helper，并通过 `check:generated` 地址漂移检查。
+- [x] **F9** 运行形态地址配置：扩展既有 `configs/windows.json` / schema；API 侧仅配置 `apiTargets`，路径前缀与 Vite proxy 收口到 `internal/vite` API context 黑盒，调用为 `GENERATED_API_NAMESPACES.<target>.<name>`。
 
 ## 7. 当前缺口
 
@@ -351,7 +351,7 @@ credentials → organization → mfa → recovery → success/failure
 
 ### ~~F9~~（已闭合 → §6 摘要）
 
-- **F9 已完成**：未新增配置文件，直接扩展 `configs/windows.json` 和 `configs/windows.schema.json`，统一承载 `standalone`、`integrated`、`real-stack`、`mock/e2e` 的入口、base path、dev server、API namespace、proxy target、OpenAPI endpoint 和 route pattern。
+- **F9 已完成**：未新增配置文件，直接扩展 `configs/windows.json` 和 `configs/windows.schema.json`，统一承载 `standalone`、`integrated`、`real-stack`、`mock/e2e` 的入口、base path、dev server、API target、OpenAPI endpoint 和 route pattern。浏览器 API 路径前缀与 Vite proxy 不进入 `windows.json`，而按 `apiTargets` 分组固化在 API context 黑盒中。
 - `scripts/generate-window-configs.mjs` 生成 app-shell/Electron manifest、runtime address constants 和 `@nebula-studio/contracts` API namespace constants；`internal/vite` 提供 shell、standalone、proxy、Playwright、real-stack、OpenAPI helper。
 - 子应用 Vite 配置只声明 `appId`，端口、base path、proxy preset 均从 `windows.json` 派生；Shell 集成运行时通过 window manifest/embed helper 进入子应用。
 - `scripts/generate-contracts.mjs`、`playwright.config.ts`、`scripts/e2e/run-real-stack.ps1`、real-stack E2E 和前端 api-client 已切换为生成常量/helper。
