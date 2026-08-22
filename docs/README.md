@@ -10,6 +10,7 @@
 | [nebula-current-state-analysis.md](./nebula-current-state-analysis.md) | 基于代码证据的全栈实现快照、已知缺口和风险 |
 | [nebula-development-detailed-plan.md](./nebula-development-detailed-plan.md) | 从当前缺口出发的跨仓库实施顺序与验收关口 |
 | [nebula-studio-frontend-refactoring-plan.md](./nebula-studio-frontend-refactoring-plan.md) | 前端现状、已完成重构及剩余增量工作 |
+| [nebula-module-federation-frontend-refactoring-plan.md](./nebula-module-federation-frontend-refactoring-plan.md) | Host/Remote、Module Federation、独立启动、应用注册中心与前端包重组的跨仓库重构计划 |
 | [PostgreSQL_实时离线一体化数据平台方案汇总.md](./PostgreSQL_实时离线一体化数据平台方案汇总.md) | 独立的数据平台方案，不作为 Nebula 当前实现状态的证据 |
 
 ## 当前审查基线
