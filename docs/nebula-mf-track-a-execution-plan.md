@@ -9,7 +9,15 @@
 
 A 轨 Phase 0–7 主路径已落地。本机验收：`vp run test:e2e:real` 1 passed（复用 Console/Integration/Executor）；`vp run test:e2e:electron` 已通过。Phase 1 CSS/bundle：共享 `theme.css` 不再全仓库 `@source`；`nebulaTailwindSourcePlugin` 按制品依赖注入扫描集；`check:css-sources` / `check:bundle` + `configs/bundle-baseline.json`。Host 初始同步 JS 约 **35.65 KiB gzip**（预算 350）；docs / settings / integration Remote gzip 有上限。`**/.mf/` 已 gitignore。§17 **8 / 9 / 14 库存 / 16** 已关门。
 
-**A 轨有意不做：** 目录改名 `node-kit`/`build-kit`；删除 `bootMicroApp`；前置网关按请求轮换 CSP nonce。B 轨 token/视觉规则未开工。B/C 未开工。
+**历史保留项复评：** A-R1 已完成：`apiTargets`、real-stack、E2E patterns 分别迁至 `configs/environments.json`、`configs/real-stack.json`、`configs/e2e.json`，生成器/Vite/real-stack 脚本读取拆分配置并通过 schema 校验。目录改名没有运行时收益；`bootMicroApp` 是受限的 standalone/Host composition API且 Federation 已禁止调用；每请求 CSP nonce 属部署网关职责。
+
+## 复评实施结果
+
+| ID   | 工作项 | 验收 |
+| ---- | ------ | ---- |
+| A-R1 | 配置职责拆分（已完成） | `configs/windows.json` 只保留 shell/Electron renderer/preload/presentation；三个拆分配置均有 schema；生成器、Vite proxy、OpenAPI、soak、real-stack 脚本已切换 |
+
+A-R1 已完成且不要求删除 `bootMicroApp`、改目录名或等待 B/C。
 
 已落地切片（按刀，下文保留）：
 
@@ -657,7 +665,7 @@ vp run --filter @nebula-studio-internal/vite test
 | A-9    | 重叠删除            | app-shell/runtime 不再导出协议；调用方直连 shell-protocol            |
 | A-16   | 生产 CSS 分层       | Federation `styles/remote`；容器级 appearance；重复 namespace 拒绝   |
 | A-14   | 包库存              | `vp run check:inventory`；Host gzip 仍走 `check:bundle`              |
-| A-skip | 有意不做            | CSP nonce 网关；改名 node-kit；删除 bootMicroApp；B 轨 ThemePreference |
+| A-skip | 复评后保留          | CSP nonce 网关（部署职责）；目录改名（无收益）；删除 bootMicroApp（仍有 standalone/Host composition 消费者） |
 
 ```text
 vp run check:boundaries

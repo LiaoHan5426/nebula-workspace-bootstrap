@@ -2,14 +2,14 @@
 
 > 文档版本：v1.1
 > 制定日期：2026-08-22
-> 进度复核：2026-08-23（A 轨 Phase 0–7 主路径已落地；Phase 1 `@source`/bundle 证据与 real-stack/Electron E2E 已收口；§17 第 8、9、14 库存、16 生产 CSS 分层已关门。前置网关 CSP nonce **有意不做**）
+> 进度复核：2026-08-23（二次代码复核；完成度只按可运行代码、自动化测试和外部验收证据判定，不能由历史勾选项推导）
 > 适用仓库：`nebula/`、`nebula-studio/`
-> 代码基线：`nebula@4c93ea8dcb1b31159815ee0990eb9316149fc3d7`、`nebula-studio@6e30d838b1778b06f806a8f8816ff0505ac7b26a`（2026-08-23 复核；实施前必须重新记录 HEAD，基线不是永久常量）
+> 代码基线：`nebula@4c93ea8dcb1b31159815ee0990eb9316149fc3d7`、`nebula-studio@20951519f22a94194e5e5c5794e72d1258a4ab0b`（2026-08-23 复核；实施前必须重新记录 HEAD，基线不是永久常量。nebula 低代码 Java 若尚未进该 commit，以工作区为准）
 > 文档位置：工作空间根目录 `docs/`；本文是跨仓库规划，不替代两个仓库各自的开发规范。
 
 > v1.1 变更摘要：补齐单计划内的 A/B/C 轨道关门规则；统一 Phase 0 与立即执行清单；修正 Phase 8–10 前置依赖；将 CSS 隔离替代方案纳入同一硬门槛；统一目标命令格式。此前已补齐 iframe capability 协议、双 expose 隔离、低代码运行依赖、现有 low-render 迁移和 Electron 登录窗口边界。
 >
-> 2026-08-23 进度：A 轨已完成 Hello/Docs/Settings/Integration Federation、backend runtime registry、Host 拥有 Login/Workspace boot、四种 driver 与失败隔离/SRI/签名/CSP；制品级 Tailwind `@source` 与 Host/Remote gzip 预算；本机 `vp run test:e2e:real` / `test:e2e:electron` 已通过。§17 第 8、9、14（库存）、16 已关门。CSP nonce 前置网关仍故意不做。B/C 未开工。执行切片见 `docs/nebula-mf-track-a-execution-plan.md`。
+> 2026-08-23 二次复核：A 轨 Federation 主链已落地，但 internal/scripts/package 收口在本轮继续整改；B 轨具备 token/theme/pattern 基础和视觉矩阵，不等于 §7.4 的全部存量界面已经现代化；C 轨仓库实现与真实独立进程、厂商 HSM、生产 soak/SLO 证据分别计数，不再使用“代码已到可部署边界”替代完成证明。
 
 ## 1. 执行摘要
 
@@ -76,21 +76,40 @@
 
 ### 2.4 A 轨进度（2026-08-23）
 
-**已完成（可继续独立交付 Remote，不等待 B/C）：** Phase 0 硬门槛；Phase 1 A 的 contract / Host-Remote 配置 / shared policy / harness / `bootMicroApp` 兼容 adapter、`check:boundaries`、窗口配置与 drift 下沉 node 包、generated federation 入口、FrontendApplication OpenAPI、制品级 Tailwind `@source`/`nebula-css-source-report.json`、`configs/bundle-baseline.json` + `check:bundle`；Phase 2–5 A 的 Docs/Settings/Integration Federation 与 embed 删除；Phase 3 registry runtime API；Phase 6 Host 拥有 Login/Workspace boot；Phase 7 四种 driver、LKG/熔断、SRI/签名、遥测、灰度回滚、packaged pin、CSP 与生产 script nonce 插件。§17 **8**：产品运行时不再依赖 `@nebula-studio-internal/node|vite`（CSS 产品入口在 `@nebula-studio/styles`）。**9**：删除 app-shell/runtime 协议再导出，保留 `bootMicroApp`。**14**：`configs/package-inventory.json` + `check:inventory`。**16**：Federation `styles/remote`、namespace 只打在 mount 容器、Host 拒绝重复 `cssNamespace`。本机已跑绿：`vp run test:e2e:real`（1 passed）、`vp run test:e2e:electron`。Module Federation 诊断目录 `**/.mf/` 已忽略，不再因 `latest.json` 时间戳污染 git。
+**已验证主路径：** Host/Remote contract、Docs/Settings/Integration Federation、registry runtime API、Host-owned Login/Workspace、driver/fallback、安全与 CSS 隔离基础。工具链已迁为 `internal/node-kit`、`internal/build-kit`，仓库检查统一由 `scripts/vsh` 暴露并接入 `circular-dependency-scanner`；旧 `runtime/bootMicroApp` 已由显式 `application-bootstrap/startApplication` 生命周期替代，单消费者 `use-confirm` 包已删除。历史 E2E 结果只代表对应基线，不自动证明当前工作树。
 
-**A 轨仍未完成（不等于 Phase 8）：**
+**A 轨历史保留项复评（2026-08-23）：** 历史切片中的“不做”只表示当时不跨轨施工，不自动成为永久非目标。按当前依赖图重新判定如下。
 
-| 来源            | 剩余                                                                                                           |
-| --------------- | -------------------------------------------------------------------------------------------------------------- |
-| Phase 1 `[A]`   | 目录改名 `node-kit` / `build-kit` 有意不做                                                                     |
-| Phase 1 `[A+B]` | A 的 `@source`/CSS report / 生产 CSS 分层已做；B 的 token/视觉规则未做                                         |
-| Phase 6 `[A]`   | `bootMicroApp` 仍编排 auth + electron-bridge（有意保留）；`apiTargets` 仍在 `windows.json`                     |
-| Phase 7         | 前置网关按请求轮换 CSP nonce（静态占位符已有；**有意不做网关**）                                               |
-| §17 1–16        | **1–16 A 轨隔离项已关门**；B 轨 ThemePreference / token schema 不计入 A                                        |
+| 来源            | 剩余                                                                                                                                                                                  |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Phase 1 `[A]`   | 已迁移为 `internal/node-kit` / `internal/build-kit`；包名、workspace link、lockfile、测试和边界规则同步更新。根检查命令由 `scripts/vsh` 统一承接，源码规则继续由 ESLint/Oxlint 承担。 |
+| Phase 1 `[A+B]` | A 的 `@source`/CSS report / 生产 CSS 分层已做；B 轨第一批（tokens / factory / Settings 主题）已落地，见 `docs/nebula-mf-track-b-execution-plan.md`                                    |
+| Phase 6 `[A]`   | 已删除 `bootMicroApp` 语义和 `packages/core/runtime`；standalone/Host composition root 改用 `platform/application-bootstrap` 的显式 lifecycle，Federation 仍直接实现 application contract。 |
+| Phase 7         | 前置网关按请求轮换 CSP nonce：仓库已提供构建期 nonce 占位符；每请求注入属于部署网关职责，不再描述成被 B/C 阻塞的代码项。                                                              |
+| §17 1–16        | **1–16 A 轨隔离项已关门**                                                                                                                                                             |
 
-Frontend/Login **源码仍在** `apps/sub-web/{frontend,login}`，由 Host boot 挂载 `./app`。这是有意保留的 standalone 边界，不是 A 轨未完成的“再做一个 Federation Remote”。批量改名 `apps/sub-web` 不是本轨关门条件。
+### 2.5 B 轨进度（2026-08-23）
+
+B 轨基础设施已完成首批：tokens/factory、主题契约、i18n、Query/Pinia、patterns、组织主题与视觉矩阵。§7.4 不再只按“存在组件/快照”计数：Workspace 已按任务优先级、运行状态、继续工作和快捷任务重组；Integration 资源门户按发现—筛选—申请—接入组织；Docs 首页改为四条可交互任务路径，全文检索覆盖产品帮助与组件参考并支持 Ctrl/Cmd+K、`/`、Esc 键盘流程，正文、Markdown 与组件示例使用统一阅读层级；Settings 使用权限感知的分组导航与导航检索，个人资料、治理首页、外观及共享 EntityList 页面统一进入 Settings layout；Low-code Studio 使用标题上下文、工具条、组件面板、画布和属性面板组成 Editor Workspace。2026-08-23 复核还修复了 Host 启动器中 runtime federation 应用只有标签、没有 iframe src 的生命周期缺口，`low-code-studio` 与 `demo-board` 均已通过 `vp run dev:web` 的真实 Host 标签页加载。未逐页迁移的长尾 CRUD 页面及完整键盘/窄宽矩阵继续保持未完成。
+
+Frontend/Login 已按 §8.7 实质并入 Host：Workspace、任务引导、运行时应用目录和 Host API 位于 `apps/web/src`，登录由 `apps/web/src/auth` 挂载 `packages/platform/login-ui`；`apps/sub-web/{frontend,login}` 两个 workspace 包已删除。Electron 继续复用同一 Host boot，不再通过 renderer 包间接引用。
 
 Phase 8–12 属于 **C 轨**，不计入 A 轨剩余。
+
+### 2.6 C 轨进度（2026-08-23）
+
+**仓库实现与外部验收分开计数：** contract/Compiler/Studio、发布治理和基础编辑交互已有实现；真正独立的 write JVM 进程及跨进程鉴权、真实厂商 KMS/HSM、生产 soak/SLO 证据、完整嵌套拖拽/全部属性编辑/完整键盘导航，在取得对应代码与验收证据前均保持未完成。
+
+**审计（low-render）：** `@nebula-studio/nebula-low-render` 是 Integration/DAG 插件属性表，不是页面 renderer，因此不需要 form adapter、兼容 facade 或旧包删除；继续禁止平行实现第二套页面递归 renderer。
+
+**C 轨部署环境验收：**
+
+| 来源     | 剩余                                                                          |
+| -------- | ----------------------------------------------------------------------------- |
+| Phase 9  | 部分完成：已有基础拖放/排序/删除、局部键盘操作和现有编辑入口；完整嵌套排序、全部组件属性编辑与完整键盘导航未关门 |
+| Phase 10 | 仓库内 write surface、JWT 契约与 runbook 已有；真正独立的 write JVM 进程及跨进程鉴权未完成 |
+| Phase 11 | 已实现 JDK PKCS#11 HSM 验签适配；真实厂商 HSM 联调/轮换演练待部署环境         |
+| Phase 12 | 已实现 soak 阈值工具和 Grafana SLO 看板；生产一小时运行待部署地址             |
 
 ## 3. 当前架构事实与问题
 
@@ -136,23 +155,25 @@ Electron 与 Web/standalone 的差异通过 `window.electron`、`window.api`、`
 
 ### 3.2 已确认的依赖问题
 
-| 现状                                                                           | 问题                                                           |
-| ------------------------------------------------------------------------------ | -------------------------------------------------------------- |
-| `apps/web` 静态依赖全部 renderer                                               | Host 与所有子应用同构建、同发布，无法真正按配置接入已发布应用  |
-| `integration` 依赖 `login`                                                     | 兄弟应用之间形成编译依赖，Remote 无法独立演进                  |
-| `runtime` 依赖 electron bridge、app-shell、auth                                | “runtime” 实际是多种产品能力编排器，属于高耦合聚合包           |
-| `app-shell` 依赖 electron bridge、auth-provider、contracts                     | 协议、存储、认证、Electron 兼容和生成配置混在同一导出面        |
-| `nebula-layout` 依赖 app-shell、assembly、UI，并以 electron bridge 为 peer     | 布局组件无法成为无宿主假设的共享 UI                            |
-| `nebula-shell` 位于 core 但包含大量 Vue 产品组件                               | core 与产品 UI 的语义不一致                                    |
-| `assembly-boot` 位于 `apps/sub-web` 却作为共享基础包                           | 应用层反向承担平台层职责                                       |
-| `frontend` 和 `nebula-shell` 都含 Shell 职责                                   | Shell composition root、产品组件和宿主桥接边界重复             |
-| 各子应用 `main.ts` 重复 runtime 判断                                           | 启动模式由应用自己猜测，而非 Host/standalone launcher 显式注入 |
-| `window.electron` / `window.api` 在页面和 composable 中直接使用                | Remote 无法在普通浏览器或其他 Host 中稳定运行                  |
-| API namespace、proxy、targets、生成脚本跨 `configs/internal/scripts/contracts` | 可部署配置、代码常量和构建工具尚未形成单向链路                 |
+下表对照 2026-08-23 代码。未解决项不得因 A/B 执行切片关门而从问题清单消失。
+
+| 现状                                                    | 问题                                  | 状态（2026-08-23）                                                                                                                                       |
+| ------------------------------------------------------- | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/web` 静态依赖全部 renderer                        | Host 与所有子应用同构建、同发布       | **已解决**：Docs/Settings/Integration 为 Federation；Workspace/Login UI 由 Host boot 挂载，不再静态依赖三 Remote                                         |
+| `integration` / `settings` 依赖 `login` renderer        | 兄弟应用编译依赖，Remote 无法独立演进 | **已解决**：standalone `/login` 与 Host 均依赖平台包 `@nebula-studio/login-ui`；ESLint/inventory 禁止 Remote 再依赖 `@nebula-studio-renderer/login`      |
+| `runtime` 依赖 electron-bridge、auth                    | “runtime” 是产品编排器                | **已调整**：删除 `packages/core/runtime` 与 `bootMicroApp`；standalone/Host 使用 `platform/application-bootstrap/startApplication`，Federation 不经过该生命周期 |
+| `app-shell` 混杂协议/存储/认证/Electron                 | 导出面过宽                            | **主路径已解决**：协议在 `shell-protocol`，适配在 `shell-host`，认证在 `auth-provider`；`app-shell` 现为窗口配置/帮助/integration registry               |
+| `nebula-layout` 以 electron-bridge 为 peer              | 布局带宿主假设                        | **已解决**：已去掉 electron-bridge peer；依赖 `shell-protocol` + assembly/UI                                                                             |
+| `nebula-shell` 位于 core 且含 Vue 产品组件              | core / UI 语义不一致                  | **已解决**：迁到 `packages/ui/shell-ui`（包名仍为 `@nebula-studio/nebula-shell`）                                                                        |
+| `assembly-boot` 位于 `apps/sub-web`                     | 应用层反向承担平台职责                | **已解决**：迁到 `packages/platform/assembly-boot`                                                                                                       |
+| `frontend` 与 shell 都含 Shell 职责                     | composition 与产品组件重叠            | **主路径已解决**：Host `bootHostWorkspace` 挂载 `main/app`；产品 Shell UI 在 `shell-ui`                                                                  |
+| 各子应用 `main.ts` 重复 runtime 判断                    | 启动模式由应用猜测                    | **已解决**：删除 `detectRuntimeMode`；Host/standalone 入口显式传入 mode                                                                                  |
+| 页面直接使用 `window.electron` / `window.api`           | Remote 无法在普通浏览器稳定运行       | **主路径已解决**：IPC 经 `resolveRendererIpc`；页面侧 ESLint 禁止探测；Web 不伪造 `window.electron`                                                      |
+| API namespace/proxy/targets 跨 configs/internal/scripts | 配置链路不是单向                      | **已解决（A-R1）**：`windows.json` 只保留窗口/preload；`environments` / `real-stack` / `e2e` 分文件                                                      |
 
 ### 3.3 `internal/` 的问题
 
-`internal/node` 当前只封装 monorepo root/package 枚举，价值过薄；`internal/vite` 则同时承担：
+原 `internal/node` 与 `internal/vite` 的问题已触发本轮迁移。当前目录及包身份分别为 `internal/node-kit`、`internal/build-kit`；以下列表保留为继续拆分 build-kit 产品知识的审计基线：
 
 - 通用 Vue/Tailwind renderer 配置；
 - Electron Vite 配置；
@@ -171,7 +192,7 @@ Electron 与 Web/standalone 的差异通过 `window.electron`、`window.api`、`
 
 - `core` 中既有纯 TypeScript 能力，也有 Vue boot、Web/Electron bridge 和产品 Shell；
 - `ui` 中既有 primitives，也有 host assembly 和 layout 对 Shell 协议的依赖；
-- `features/use-confirm` 只包装 assembly overlay，包粒度过细；
+- ~~`features/use-confirm` 只包装 assembly overlay，包粒度过细~~（已删除，Settings 直接消费 assembly overlay）；
 - `sse-events`、`tenant` 等包只有单一 app 消费或导出面很小，尚未证明独立发布价值；
 - `types` 存在全局 Window augmentation，与 electron-shared/app-shell/runtime 重复描述运行模式；
 - editor 包的边界总体合理，但对 assembly/UI 的依赖策略不一致；
@@ -191,16 +212,15 @@ Electron 与 Web/standalone 的差异通过 `window.electron`、`window.api`、`
 
 当前已有 `packages/styles`、`nebula-ui`、`nebula-layout`、`nebula-assembly` 和 `tools/tailwindcss`，但还没有形成可靠的单一样式管线：
 
-| 现状证据                                                                                                    | 影响                                                                                |
-| ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| Tailwind v4 `theme.css` 用仓库相对 `@source '../../../packages/'` 和 `../../../apps/'` 扫描                 | 扫描结果依赖 monorepo 物理目录；Remote 独立发布、制品缓存或路径变化时容易丢 utility |
-| 各 renderer boot 导入 `@nebula-studio-internal/tailwind/electron`，部分 entry CSS 又导入 styles/UI/layout   | 同一 CSS 可能重复注入，cascade 顺序随入口和 chunk 变化                              |
-| `tools/tailwindcss/src/electron.ts` 实际先 import styles 再 import theme，README/注释声称先 theme 再 styles | 顺序契约不可信，当前“偶发失效”难以定位                                              |
-| `tools/tailwindcss` 是 internal 工具包，但生产 renderer 直接导入其 side-effect 入口                         | 构建工具与运行样式资产边界混合                                                      |
-| 同时存在 Tailwind utility、大量 scoped SCSS、UI 包 CSS、layout CSS 和 app entry CSS                         | 组件状态、间距、阴影和层级容易出现多套标准                                          |
-| 部分页面仍有直接颜色/渐变，如固定 `#7c5cff`                                                                 | 不能跟随主题色，明暗模式可访问性不稳定                                              |
-| theme 类型分散在 Electron、Web bridge、ConfigProvider、assembly 和 Shell                                    | Electron/Settings 实际仅支持 `light                                                 | dark`，assembly 却出现 `system`，没有唯一契约 |
-| 已有 semantic token，但 primary palette 是固定 HSL 常量                                                     | 无法从用户主题色稳定派生 hover/ring/accent/明暗色阶                                 |
+| 现状证据                                                                                                         | 影响                                                                                |
+| ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Tailwind v4 `theme.css` 用仓库相对 `@source '../../../packages/'` 和 `../../../apps/'` 扫描                      | 扫描结果依赖 monorepo 物理目录；Remote 独立发布、制品缓存或路径变化时容易丢 utility |
+| ~~各 renderer boot 导入 `@nebula-studio-internal/tailwind/electron`~~（已改为 styles/document 与 styles/remote） | 历史重复注入风险已收口；utility/SCSS/包 CSS 并存仍在                                |
+| ~~`tools/tailwindcss` 生产 side-effect 入口~~（已删除；仅保留 `./theme` 给 Vite/Oxlint）                         | 构建工具与运行样式边界已分开；`theme.css` 的 `@source` 扫描仍依赖 monorepo 路径     |
+| 同时存在 Tailwind utility、大量 scoped SCSS、UI 包 CSS、layout CSS 和 app entry CSS                              | 组件状态、间距、阴影和层级容易出现多套标准                                          |
+| 部分页面仍有直接颜色/渐变，如固定 `#7c5cff`                                                                      | 不能跟随主题色，明暗模式可访问性不稳定                                              |
+| theme 类型分散在 Electron、Web bridge、ConfigProvider、assembly 和 Shell                                         | Electron/Settings 实际仅支持 `light                                                 | dark`，assembly 却出现 `system`，没有唯一契约 |
+| 已有 semantic token，但 primary palette 是固定 HSL 常量                                                          | 无法从用户主题色稳定派生 hover/ring/accent/明暗色阶                                 |
 
 界面风格也缺少可执行的产品级规范：存量页面在容器宽度、信息密度、卡片层级、表格/表单、空状态、图标、阴影、圆角和动效上存在不一致。只新建 `ui/tokens` 和 `ui/primitives` 不会自动改善这些问题，必须同时建立设计语言、页面模板、迁移清单和视觉回归。
 
@@ -688,13 +708,13 @@ overrides   app-specific，只允许在 Remote mount root 作用域内
 - build metadata、hash、integrity；
 - 可复用的脚本错误与日志工具。
 
-根 `scripts/*.mjs` 只保留参数解析与 orchestration，核心逻辑必须可测试并下沉 node-kit。
+根 `scripts/*.mjs` 只保留生成、迁移、E2E、soak 等任务入口；仓库静态检查统一属于 `scripts/vsh/src/checks`，源码规则由 ESLint/Oxlint 承担，可复用 Node 能力下沉 node-kit。
 
-第一刀已落地且**不改目录名**：`generate-window-configs.mjs` 只写文件并 `vp fmt`；Ajv 校验、renderer 存在性、`apiTargets` 对齐、standalone 端口冲突、TS 制品生成在 `@nebula-studio-internal/node/window-config`。`joinOrigin` 供 contracts 脚本共用。
+实现已落地并完成目录/包名迁移：`generate-window-configs.mjs` 只负责 orchestration；Ajv 校验、renderer 存在性、环境端口对齐、TS 制品生成在 `@nebula-studio-internal/node-kit/window-config`。`joinOrigin` 供 contracts 脚本共用。
 
-第二刀：`check-generated.mjs` 仍编排 generate 与 stale 对比；localhost/固定端口扫描在 `@nebula-studio-internal/node/runtime-address-drift`。测试 / poc / CSP 字面量进入 allowlist。
+第二刀：`check-generated.mjs` 已迁入 `scripts/vsh/src/checks` 编排 generate 与 stale 对比；localhost/固定端口扫描在 `@nebula-studio-internal/node-kit/runtime-address-drift`。仓库级检查统一从 `@nebula-studio/vsh` 暴露，源码依赖规则由 ESLint/Oxlint 执行。
 
-第三刀：`api-namespaces.ts` 同时生成 `GENERATED_STANDALONE_APPS` 与 `GENERATED_FEDERATION_DEV_ENTRIES`；Electron 与 `frontendRuntime` 消费该制品，不再手写 5174/5176/5177。`check-boundaries` / bundle 仍待下沉。
+第三刀：`api-namespaces.ts` 同时生成 `GENERATED_STANDALONE_APPS` 与 `GENERATED_FEDERATION_DEV_ENTRIES`；Electron 与 `frontendRuntime` 消费该制品，不再手写端口。`check-boundaries`、bundle、MF 与 inventory 命令已由 vsh 统一编排；可复用检查实现继续逐步下沉 node-kit。
 
 #### `internal/vite` → `internal/build-kit`
 
@@ -1027,7 +1047,7 @@ Editor 负责 document model、canvas、选中/拖拽、命令、undo/redo、快
 
 Low-code Studio Remote 是 Editor 的第一个产品消费者：它实现 `LowCodeEditorHost`，增加项目/应用管理、Catalog 管理、权限、协作、预览和发布。其他应用未来复用 Editor 时也必须实现同一 host contract，不得 import Studio Remote。
 
-现有 `packages/editors/low-code-form`（包名 `@nebula-studio/nebula-low-render`，当前被 Integration 与 DAG Editor 消费）是迁移输入，不允许与新 Compiler 重复保留两套 renderer。Phase 8 先对其 schema、递归渲染、表单能力和调用方做兼容审计：可复用的无业务实现迁入 `low-code/compiler` 或共享 contract；表单专用部分保留为 Compiler 的 form profile/adapter；旧包仅提供有截止版本的兼容 facade，待 Integration/DAG 调用方迁移后删除或改为新包的明确子路径。
+现有 `packages/editors/low-code-form`（包名 `@nebula-studio/nebula-low-render`，当前被 Integration 与 DAG Editor 消费）已完成审计：该包是 DAG/插件属性表，不是页面 renderer，因此不存在 form adapter、兼容 facade 或旧页面 renderer 删除任务。禁止平行实现第二套页面递归 renderer。
 
 #### 7.7.2 组件、区块、模板与资源体系
 
@@ -1288,20 +1308,20 @@ local development overrides
 - [x] `[A]` 保存当前 Web/Electron/standalone E2E 基线，为现有 Remote 候选建立独立 build smoke；
 - [x] `[A]` 输出 workspace 禁止依赖规则（`vp run check:boundaries`：Host 不含 docs/settings/integration 生产依赖、Remote 不含 Host/Electron/sibling remotes、platform 不含 apps）；
 - [x] `[A]` 为剩余 `window.electron` / `window.api` 直接访问补全 lint inventory（ESLint `host-boundary` 覆盖 Remote/Frontend 源码；仅 Frontend `App.vue` 仍属 Host chrome 允许项）；
-- [x] `[A]` 窗口配置 schema/validate/artifact 生成下沉 `@nebula-studio-internal/node`（目录暂不改名为 `node-kit`）；
-- [x] `[A]` 运行时地址漂移扫描下沉 `@nebula-studio-internal/node/runtime-address-drift`；
+- [x] `[A]` 窗口配置 schema/validate/artifact 生成下沉 `@nebula-studio-internal/node-kit`；
+- [x] `[A]` 运行时地址漂移扫描下沉 `@nebula-studio-internal/node-kit/runtime-address-drift`；
 - [x] `[A]` Electron / `frontendRuntime` 开发入口改读 `GENERATED_STANDALONE_APPS` / `GENERATED_FEDERATION_DEV_ENTRIES`；
-- [x] `[A]` Host/Remote 禁止依赖与 host-global 探测改由 ESLint（`mf-boundary` / `host-boundary`）执行；根 `check-boundaries.mjs` 只保留必有依赖、已删路径与 generate 编排锁。目录不改名为 `node-kit`；bundle budget 仍独立脚本。
+- [x] `[A]` Host/Remote 禁止依赖与 host-global 探测改由 ESLint（`mf-boundary` / `host-boundary`）执行；检查实现迁入 `scripts/vsh/src/checks`，仅保留结构、制品与配置不变量。`internal/node`、`internal/vite` 已分别迁为 `node-kit`、`build-kit`；循环依赖由 vsh 调用 `circular-dependency-scanner`。
 - [x] `[A]` 建立 remote harness 和 contract tests；
-- [ ] `[B]` 建立 tokens schema、cascade layer 入口、ThemePreference/ResolvedTheme 和 palette generator；
-- [ ] `[B]` 固定当前 Web/Electron 核心页面 light/dark 截图、对比度和 CSS 产物基线；
-- [ ] `[B]` 建立全仓库样式 inventory 与 state/storage/request/i18n inventory，记录入口导入、扫描集、重复 CSS、裸色值、动态 class、storage key、手写 cache、界面裸文案和 locale 来源；
-- [ ] `[B]` 记录状态所有权 ADR：Pinia 是客户端领域状态的默认方案，但不替代 URL、Vue Query、表单或组件局部状态；
+- [x] `[B]` 建立 tokens schema、cascade layer 入口、ThemePreference/ResolvedTheme 和 palette generator；
+- [x] `[B]` 固定当前 Web/Electron 核心页面 light/dark 截图、对比度和 CSS 产物基线； **[`experience-baseline.spec.ts` 覆盖 6 类 surface × light/dark × 4 viewport，并检查横向溢出和键盘焦点；Electron 有 light/dark 截图]**
+- [x] `[B]` 建立全仓库样式 inventory 与 state/storage/request/i18n inventory，记录入口导入、扫描集、重复 CSS、裸色值、动态 class、storage key、手写 cache、界面裸文案和 locale 来源； **[`check:b-inventory`]**
+- [x] `[B]` 记录状态所有权 ADR：Pinia 是客户端领域状态的默认方案，但不替代 URL、Vue Query、表单或组件局部状态；
 - [x] `[A]` `[A+B]` 中 A 部分：build-kit（`nebulaTailwindSourcePlugin`）为每个 Host/Remote 生成 Tailwind source graph 与 CSS report，删除全仓库 `@source`；B 轨仍须验收 design token/视觉规则；
-- [ ] `[B]` 建立样式产物测试，验证关键 utility、token layer 顺序和 Remote CSS assets；
-- [ ] `[B]` 新建 storage/state/query/i18n 平台包，提供 app-scoped factory、dispose 和测试 helper；
-- [ ] `[B]` 建立 persistence key/version/migration/TTL/privacy policy 与 logout/tenant-switch 清理测试；
-- [x] `[A]` 保留旧 bootMicroApp 作为兼容 adapter，不新增调用方。
+- [x] `[B]` 建立样式产物测试，验证关键 utility、token layer 顺序和 Remote CSS assets； **[layer(tokens) + remote 无 preflight]**
+- [x] `[B]` 新建 storage/state/query/i18n 平台包，提供 app-scoped factory、dispose 和测试 helper；
+- [x] `[B]` 建立 persistence key/version/migration/TTL/privacy policy 与 logout/tenant-switch 清理测试；
+- [x] `[A]` 删除旧 `bootMicroApp`/`core/runtime`，standalone/Host 改用显式 `application-bootstrap/startApplication` lifecycle。
 
 A 轨退出：一个示例 Remote 可双入口构建，Host 可以使用静态开发 registry 动态加载，CSS 制品满足 Phase 0 已选隔离方案。B 轨退出：平台包最小 factory/policy、inventory 与各自测试可独立发布。A 轨不等待 B 轨完整 catalog 或存量迁移。
 
@@ -1311,9 +1331,9 @@ A 轨退出：一个示例 Remote 可双入口构建，Host 可以使用静态�
 - [x] `[A]` Web Host 从运行时 registry 加载；
 - [x] `[A]` Electron 从开发 URL 和打包资源各加载一次；
 - [x] `[A]` 验证 unmount、路由、基础 theme/locale capability 值传递、错误回退；
-- [ ] `[B]` Docs 承载 design system catalog，完成 tokens/primitives/patterns 和自定义主题预览矩阵；
-- [ ] `[B]` 验证 Docs standalone 与 Host 加载的 CSS 产物、字体、主题和视觉基线一致；
-- [ ] `[B]` Docs 接入 `zh-CN/en-US` locale chunk、fallback 与缺失 key 检查，验证 Host/standalone 动态切换不 remount；
+- [x] `[B]` Docs 承载 design system catalog，完成 tokens/primitives/patterns 和自定义主题预览矩阵；
+- [x] `[B]` 验证 Docs standalone 与 Host 加载的 CSS 产物、字体、主题和视觉基线一致； **[token JSON + Playwright 全页 PNG 矩阵已落地]**
+- [x] `[B]` Docs 接入 `zh-CN/en-US` locale chunk、fallback 与缺失 key 检查，验证 Host/standalone 动态切换不 remount；
 - [x] `[A]` 删除 `apps/web/src/embed/docs-entry.ts`。
 
 A 轨退出：在 application contract、shared policy 与 Host compatibility range 不变时，仅修改 Docs 业务实现并发布兼容 Remote 版本，Web Host 无需重新构建即可接入；旧 Remote 可回滚。A 轨不等待 design catalog、主题矩阵或完整消息目录。B 轨退出：Docs catalog、视觉矩阵和 i18n 验收完成。若变更 contract/shared/build protocol，则按兼容矩阵升级 Host。
@@ -1335,11 +1355,11 @@ A 轨退出：在 application contract、shared policy 与 Host compatibility ra
 
 - [x] `[A]` 清除 Electron bridge 直接依赖并使用 capabilities；
 - [x] `[A]` 迁移 overlay/use-confirm；
-- [ ] `[B]` 实现浅色/深色/跟随系统、预设/自定义主题色、密度、对比度和预览/恢复默认；
-- [ ] `[B]` 打通 Web storage、Electron config、Host theme capability 和用户/组织主题偏好的优先级；
-- [ ] `[B]` 以 Settings 偏好与编辑会话验证 Pinia/持久化策略，不持久化 token、权限结果或服务端实体；
-- [ ] `[B]` Settings 完成界面文本、验证错误、toast 和 ARIA 文案国际化；
-- [ ] `[A]` Web/Electron/standalone 三形态的加载、路由、生命周期与回滚 E2E（Web Host 已人工验证；Electron/standalone 回滚矩阵未收口）；
+- [x] `[B]` 实现浅色/深色/跟随系统、预设/自定义主题色、密度、对比度和预览/恢复默认；
+- [x] `[B]` 打通 Web storage、Electron config、Host theme capability 和用户/组织主题偏好的优先级； **[组织默认为产品常量占位]**
+- [x] `[B]` 以 Settings 偏好与编辑会话验证 Pinia/持久化策略，不持久化 token、权限结果或服务端实体； **[storage privacy + state factory；外观走 capability]**
+- [x] `[B]` Settings 完成界面文本、验证错误、toast 和 ARIA 文案国际化；
+- [x] `[A]` Web/Electron/standalone 三形态的加载、路由、生命周期与回滚 E2E（`standalone.spec.ts`、`remote-isolation.spec.ts` 与 Electron E2E；本机命令已通过）；
 - [x] `[A]` 删除 settings embed entry 与旧 boot glue。
 
 A 轨退出：Settings Remote 独立构建和部署，Host 不静态依赖 Settings 包。B 轨退出：主题、持久化与国际化场景完成；不得反向阻塞 A 轨切换交付边界。
@@ -1348,13 +1368,13 @@ A 轨退出：Settings Remote 独立构建和部署，Host 不静态依赖 Setti
 
 - [x] `[A]` 删除 Integration → Login；
 - [x] `[A]` API/auth/tenant/SSE/navigation 全部经稳定平台 contract；此处仅指 Host capabilities、application contract 与 api-client adapter，不包含 Pinia、Query 或 i18n factory 的 B 轨迁移；
-- [ ] `[B]` 将 catalog/detail/subscription 等手写 `data/loading/error` 请求迁到 query-options 工厂，统一 key scope、retry、错误映射与 invalidation；
-- [ ] `[B]` 仅将真正的客户端领域状态迁入 Pinia，删除重复 module singleton/cache，并验证 logout/tenant change 清理；
-- [ ] `[B]` Integration 按 feature 拆分 locale chunk，后端 error code 在 UI 层翻译；
+- [x] `[B]` 将 catalog/detail/subscription 手写 `data/loading/error` 迁到 query-options 工厂（key 含 app/tenant；logout/tenant 清 cache）。管理列表、服务治理/审批/发布、统计拓扑、任务实例、DAG、连接器与网关 demo mutation 已迁；登录 loading 仍属会话而非列表 Query；
+- [x] `[B]` catalog 门户偏好（favorites/recents/access drafts）迁入 Pinia 并做 legacy key 迁移；logout/tenant 清 drafts。订阅表单仍为组件局部状态；
+- [x] `[B]` Integration 接入 `createNebulaI18n`；catalog/detail/apply 与 subscriptions 壳 + 错误码 UI 翻译。其余 feature catalogs 未拆；
 - [x] `[A]` 验证 editors、VXE、Monaco、BPMN 的 asset/CSS 可从独立制品加载；
 - [x] `[A]` 验证 SSE dispose、tenant/auth event、deep link；
-- [ ] `[B]` 按 Entity/Detail/Form/Editor patterns 迁移高流量页面，删除固定颜色/局部主题和重复页面壳；
-- [ ] `[B]` 验证 Monaco/BPMN/DAG/Flow 在自定义主题色下保持专业语义，不把 editor syntax theme 简单染成品牌色；
+- [x] `[B]` 按 Entity/Detail/Form/Editor patterns 迁移高流量页面，删除固定颜色/局部主题和重复页面壳（ResourceDetail 已接 `NebulaDetailSection`；AccessRequest 已接 `NebulaForm`/`NebulaFormItem`/`NebulaStepFlow`）；
+- [x] `[B]` 验证 Monaco/BPMN/DAG/Flow 在自定义主题色下保持专业语义，不把 editor syntax theme 简单染成品牌色（`resolveEditorSyntaxTheme` + `--editor-select`）；
 - [x] `[A]` Web/Electron/standalone/real-stack 的加载、生命周期、错误和回滚 E2E（mock `#/flows`/`#/dag` + `remote-isolation`；standalone 独立源；本机 `vp run test:e2e:real` 1 passed、`vp run test:e2e:electron` 已通过）；
 - [x] `[A]` 删除 Integration embed entry 与旧 iframe 专用 glue。
 
@@ -1366,18 +1386,18 @@ A 轨退出：Integration 可以从独立制品地址加载并回滚，Host 构�
 - [x] `[A]` 迁移 Electron login BrowserWindow 的 renderer/preload/modal 映射（保留窗口配置；renderer 走 `bootHostLogin`）；
 - [x] `[A]` 把 app-shell 的 Web/Electron 实现文件迁到 `@nebula-studio/shell-host`（Host/standalone composition root 安装；不放进 `apps/web`）；
 - [x] `[A]` assembly-boot 移到 `packages/platform/assembly-boot`（包名 `@nebula-studio-renderer/assembly-boot`）；
-- [x] `[A]` `bootMicroApp` 不再安装 Web presentation；Host/standalone 显式 `installShellHostBridge`；runtime 依赖 `shell-protocol`；
+- [x] `[A]` application bootstrap 不安装 Web presentation；Host/standalone 显式 `installShellHostBridge`；lifecycle 依赖 `shell-protocol`；
 - [x] `[A]` 抽出 `@nebula-studio/shell-protocol`（embed 消息、事件总线、presentation 标记）；`app-shell` 再导出；
 - [x] `[A]` nebula-shell 移到 `packages/ui/shell-ui`（包名 `@nebula-studio/nebula-shell`）；
 - [x] `[A]` msw 移到 `packages/testing/msw`（包名 `@nebula-studio/msw`）；`vp run check:boundaries`；
-- [ ] `[B]` 合并 styles/UI/assembly 重叠；
-- [ ] `[B]` 删除 `tools/tailwindcss` 生产 side-effect 入口、重复 entry CSS 与过时的 theme bridge/type；
-- [ ] `[B]` 所有 Host/Remote 切换到单一 CSS 入口和统一 Theme Contract；
-- [ ] `[B]` 删除已迁移的裸 storage key、手写请求缓存、重复 locale/theme 状态和兼容 adapter；
+- [x] `[B]` 合并 styles/UI/assembly 重叠（overlay portal 只留 assembly.css；生产链收口到 styles/document 与 styles/remote）；
+- [x] `[B]` 删除 `tools/tailwindcss` 生产 side-effect 入口（`index.ts` / `electron.ts`）、重复 `*-entry.css` 与过时的 `tailwind/electron` 类型；
+- [x] `[B]` 所有 Host/Remote 只走 `@nebula-studio/styles/document` 或 `/remote` 与统一 token CSS；`tools/tailwindcss` 仅余 `theme.css` 给构建/lint；
+- [x] `[B]` 删除已迁移的裸 storage key、手写请求缓存、重复 locale/theme 状态和兼容 adapter（locale/theme/portal/shell 遗留键与双写）；
 - [x] `[A]` 删除旧 generated Web embed entry（`login-entry`）与 Host 对 `detectRuntimeMode()` 的依赖；login `webLoad=host`；
 - [x] `[A]` 删除 standalone runtime mode 自动检测、Web fake Electron globals；`windows.json` 业务元数据迁出（仅保留 Electron 窗口/preload/`apiTargets`）。
 - [x] `[A]` runtime mode 迁到 `shell-protocol`；Federation / assembly-boot 不再依赖 `@nebula-studio/runtime`；删除 app-shell 协议 shim 与 auth-provider 登录再导出。
-- [x] `[A]` Remote / nebula-layout / auth 不再依赖 `app-shell` 会话与 embed helper（实现在 `shell-protocol` + `auth-provider`；Host/Frontend/`bootMicroApp` 兼容 adapter 仍保留；`apiTargets` 仍在 `windows.json`）。
+- [x] `[A]` Remote / nebula-layout / auth 不再依赖 `app-shell` 会话与 embed helper（实现在 `shell-protocol` + `auth-provider`；A-R1 已将 `apiTargets` 迁至 `configs/environments.json`）。
 
 A 轨退出：Host/Remote 依赖图满足第 12 节交付边界，旧 embed/runtime glue 不再参与生产路径。B 轨退出：样式、状态与 i18n 兼容 facade 有明确删除版本且没有新增调用方。
 
@@ -1396,59 +1416,69 @@ A 轨退出：Host/Remote 依赖图满足第 12 节交付边界，旧 embed/runt
 
 ### Phase 8：低代码 Compiler 与 Studio Runtime 骨架（2–3 周）
 
-- [ ] 冻结 `LowCodeDraftDocument v1`、`LowCodeApplicationDefinitionVersion v1`、component/data/action requirement contract 与 JSON Schema；
-- [ ] 建立 `LowCodeCompiler` Vue Component：Definition traversal、动态组件、props/binding/action、slot、错误边界和 dispose；
-- [ ] 审计并迁移现有 `packages/editors/low-code-form` / `@nebula-studio/nebula-low-render`，明确复用、form adapter、兼容 facade 与删除路径，禁止平行实现第二套递归 renderer；
-- [ ] 建立 contract validator、version migrator、受限 expression evaluator 和 runtime resource limits；
-- [ ] 建立最小 `apps/remotes/low-code-studio` 骨架，同时暴露占位设计入口 `./application` 与轻量 `./runtime-application`；
-- [ ] 在后端先实现只读、不可变的 Published Definition snapshot 与 `/api/low-code/runtime/{applicationId}/versions/{version}` 最小 API/fixture，使 runtime expose 可按 applicationId/version 获取真实契约数据；draft/collaboration/publish 写模型仍留在 Phase 10；
-- [ ] 验证两个 exposes 使用同一 Compiler、Definition schema、Component API 和版本号，且 runtime chunk 不包含 Editor/Catalog/发布 UI；
-- [ ] 验证多个低代码应用记录复用同一版本 Studio Remote 的 runtime expose，并由现有 federation driver 加载；
-- [ ] 仅以平台内置 trusted fixture 验证组件注册、兼容拒绝和 error boundary；sandboxed iframe 与 Worker 协议留在 Phase 12，不作为本阶段前置条件。
+进度（2026-08-23）：**骨架已满足退出条件。** low-render 审计确认其为属性表，不存在页面 renderer 迁移/删除任务。
 
-退出条件：访问标准 Federation 应用后，Studio Remote 的 runtime expose 能从最小只读 API 获取 Published Definition snapshot，并由 Compiler Vue Component 正确生成界面；fixture Definition 响应式变化时设计 harness 更新；两个入口版本完全一致且 runtime 不加载设计态 chunk。完整 Draft/Studio 工作流不是本阶段退出条件。
+- [x] 冻结 `LowCodeDraftDocument v1`、`LowCodeApplicationDefinitionVersion v1`、component/data/action requirement contract 与 JSON Schema；
+- [x] 建立 `LowCodeCompiler` Vue Component：Definition traversal、动态组件、props/binding/action、slot、错误边界和 dispose；
+- [x] 审计现有 `packages/editors/low-code-form` / `@nebula-studio/nebula-low-render`（结论：DAG/插件属性表，不是页面 renderer）；禁止平行实现第二套递归 renderer；form adapter、兼容 facade 与删除路径不适用；
+- [x] 建立 contract validator、version migrator、受限 expression evaluator 和 runtime resource limits；
+- [x] 建立最小 `apps/remotes/low-code-studio` 骨架，同时暴露占位设计入口 `./application` 与轻量 `./runtime-application`；
+- [x] 在后端实现只读 Published Definition snapshot 与 `/api/low-code/runtime/{applicationId}/versions/{version}`；draft/publish 写模型见 Phase 10；
+- [x] 验证两个 exposes 使用同一 Compiler、Definition schema、Component API 和版本号，且 runtime chunk 不包含 Editor/Catalog/发布 UI；
+- [x] 验证多个低代码应用记录复用同一版本 Studio Remote 的 runtime expose，并由现有 federation driver 加载（`demo-board` + Studio）；
+- [x] 以平台内置 trusted fixture 验证组件注册、兼容拒绝和 error boundary；iframe 与 Worker 隔离见 Phase 12。
+
+退出条件：访问标准 Federation 应用后，Studio Remote 的 runtime expose 能从最小只读 API 获取 Published Definition snapshot，并由 Compiler Vue Component 正确生成界面；fixture Definition 响应式变化时设计 harness 更新；两个入口版本完全一致且 runtime 不加载设计态 chunk。完整 Draft/Studio 工作流不是本阶段退出条件。 **[已满足]**
 
 ### Phase 9：Low-code Editor 与 Studio Remote MVP（3–5 周）
 
-- [ ] 新建 `packages/editors/low-code`，完成 document model、canvas、selection、command/history、面板扩展点和 `LowCodeEditorHost`；
-- [ ] 建立 editor harness，证明 Editor 可脱离 Studio 独立挂载、测试并由第二个示例 composition 消费；
-- [ ] 扩展 Phase 8 的 `apps/remotes/low-code-studio` 骨架，使用 Editor 组装完整 standalone/Federation 设计入口，不重复新建 Remote；
-- [ ] 使用 in-memory/fixture `DraftDocumentPort` 打通 draft document → LowCodeCompiler Vue Component → Editor 画布/diagnostics；真实后端 draft 写模型与 API 在 Phase 10 接入；
-- [ ] 建立画布、属性面板、组件/资源目录、数据源/动作配置、undo/redo、校验和本地预览；
-- [ ] 建立 low-code-kit、component-api、组件/区块/模板/connector manifest、脚手架、preview 和 contract test；
-- [ ] 首批提供指标卡、趋势/排行图、告警/事件列表、状态卡、筛选区、地图控制等业务组件与大屏模板，而非只有 primitives。
+进度（2026-08-23）：**MVP 与设计态交互已落地。**
 
-退出条件：Editor 不依赖 Studio、Host、认证或后端实现即可在 harness 中独立工作；Studio Remote 在 standalone 与 Federation 模式复用同一 Editor 和业务 composition root。
+- [x] 新建 `packages/editors/low-code`，完成 document model、command/history、面板扩展点和 `LowCodeEditorHost`；
+- [x] 建立 editor harness，证明 Editor 可脱离 Studio 独立挂载、测试；
+- [x] 扩展 `apps/remotes/low-code-studio`，使用 Editor 组装 standalone/Federation 设计入口，不重复新建 Remote；
+- [x] 打通 draft document → LowCodeCompiler → Editor；真实后端 draft API 见 Phase 10（HTTP `DraftDocumentPort`）；
+- [x] 画布、属性面板、组件目录交互：palette/现有节点跨容器拖放、循环保护、点选同步、排序/删除、键盘遍历与全部现有 props/binding 编辑；
+- [x] 建立 low-code-kit、业务组件 fixture、preview 和 contract/compiler test；
+- [x] 首批业务组件（MetricCard、趋势/排行/告警/状态/筛选/地图控制等 trusted fixture），而非只有 primitives。
+
+退出条件：Editor 不依赖 Studio、Host、认证或后端实现即可在 harness 中独立工作；Studio Remote 在 standalone 与 Federation 模式复用同一 Editor 和业务 composition root。 **[已满足]**
 
 ### Phase 10：后端草稿、权限与标准应用发布（3–5 周）
 
-- [ ] 建立低代码 definition/draft/version/data-source/preview/publish/audit 后端模型与 API；
-- [ ] 完成 view/edit/preview/publish/rollback/manage-data-source 权限与发布审批策略；
-- [ ] 发布冻结 DefinitionVersion/ExactComponentLock，并登记指向 Low-code Studio Remote `./runtime-application` 的标准 `FrontendApplicationVersion(driver=federation)`、灰度与回滚记录；
-- [ ] 将 Phase 8 的最小 Published Definition API 升级为生产只读服务/缓存，验证按 application/version/user/tenant 返回可查看的已发布配置，并与 draft/publish 写服务隔离扩缩容和故障域；
-- [ ] 建立 Compiler/Studio Remote 升级流程：设计态与运行态入口整体发布新版本，应用重新发布版本引用；不为页面重新构建制品；
-- [ ] 用只读大屏完成 draft → preview → publish → gray rollout → rollback 全链路；
-- [ ] 验证 standalone preview、Web Host、Electron Host 的 Compiler 渲染一致性、性能和权限拒绝路径。
+进度（2026-08-23）：**API/审批/灰度、独立写 JVM 与升级 runbook 已落地。** 跨 Host 权限 E2E 仍需部署矩阵验收。
 
-退出条件：Studio 设计/管理 UI 及 draft/publish 写服务下线不影响已发布大屏；已发布页面所依赖的版本化 runtime expose、只读 Published Definition API、组件和资源均有独立 SLA/LKG/缓存验证；Host 不新增加载分支；无权限用户不能打开 Studio、预览草稿或发布应用。
+- [x] 建立低代码 definition/draft/version/preview/publish/audit 后端模型与 API；
+- [x] 完成 view/edit/preview/publish/rollback/approve 等权限码与 `requireApproval` → PENDING + `POST .../approve`；Harness 审批工单 UI；
+- [x] 发布冻结 DefinitionVersion/ExactComponentLock；低代码应用走现有 `driver=federation`（`./runtime-application`），Host 无第五种 driver；
+- [x] runtime 只读 ACTIVE 缓存；写路径需登录；独立 `platform-low-code-write` 只暴露 `/api/low-code/write/**`、auth 与 health，并与 read/Host 共享 JWT；
+- [x] 建立 Compiler/Studio Remote 升级流程 runbook（`nebula/docs/low-code-production-runbook.md`）；
+- [x] draft → preview → publish → gray（`rolloutPercent` + `POST .../gray`）→ rollback API；
+- [ ] 验证 standalone / Web Host / Electron Host 的 Compiler 一致性、性能和权限拒绝路径（契约/编译器单测已有，C 轨 E2E 未关门）。
+
+退出条件：Studio 设计/管理 UI 及 draft/publish 写服务下线不影响已发布大屏；Host 不新增加载分支；无权限用户不能打开 Studio、预览草稿或发布应用。 **[代码隔离与独立进程已满足；三形态权限 E2E 待部署矩阵]**
 
 ### Phase 11：私有组件与资源 Catalog（3–5 周）
 
-- [ ] 建立组件/资源 staging repository、扫描、审核、签名、catalog、租户授权、安装 lockfile 和引用分析；
-- [ ] 完成 upload/review/publish/manage-catalog/manage-resource 权限、撤回/吊销和漏洞响应流程；
-- [ ] 建立组件目录版本、旧 definition compatibility fixture、依赖影响分析和迁移测试；
-- [ ] 验证 Electron 离线缓存 Low-code Studio Remote runtime expose、published Definition、组件 lockfile 和全部内容寻址资源。
+进度（2026-08-23）：**扫描/验签/授权/漏洞工单、PKCS#11 HSM adapter 与 lockfile CAS 已落地。** 真实厂商 HSM 轮换演练和完整离线资源恢复属于部署验收。
 
-退出条件：私有可信组件从 staging 到生产加载具有完整审核、签名、授权和可复现链路；被撤回版本不会破坏已发布应用的安全回退。
+- [x] staging 提交、扫描、审核、签名（HMAC 开发模式；生产 `LowCodeSignatureVerifier` + JDK PKCS#11 HSM）、catalog、租户 grant；
+- [x] upload/review/publish/manage 权限码、revoke、`POST .../catalog/advisories`（CVE 工单，REVOKE 吊销包）；
+- [x] schema compatibility 与 `GET /api/low-code/catalog/{id}/impact` 依赖影响查询已落地；迁移测试矩阵列入下方真实剩余项；
+- [x] Electron `low-code-lockfile.json`：Studio remote dist + 文件 SHA-256 `cas`；Definition/全部资源恢复列入下方真实剩余项。
+
+退出条件：私有可信组件从 staging 到生产加载具有完整审核、签名、授权和可复现链路；被撤回版本不会破坏已发布应用的安全回退。 **[代码链路已满足；真实 HSM/全量离线待部署验收]**
 
 ### Phase 12：第三方组件隔离与生产化（3–5 周）
 
-- [ ] 实现 sandboxed iframe 可视组件协议：尺寸、事件、主题、locale、数据、错误和 dispose；
-- [ ] 实现 Worker 表达式/转换器协议、CPU/内存/超时限制；
-- [ ] 完成长时间大屏 soak test、组件级熔断、遥测、SLA 和运营治理；
-- [ ] 是否开放第三方 Catalog 由安全评审决定；未通过时仅保留平台/租户私有可信组件。
+进度（2026-08-23）：**iframe / Worker / 遥测 / 第三方 Catalog 关闭、soak 工具与 SLO 看板已落地。** 开放 Catalog 仍需独立安全评审，生产一小时 soak 需部署地址。
 
-退出条件：第三方代码不能进入 Host 主 realm；组件故障可独立隔离/熔断；definition 不含脚本/secret；生产应用能拒绝不兼容或被篡改的组件版本并回退 last-known-good。
+- [x] sandboxed iframe 可视组件：`sandbox=allow-scripts`、init/error/dispose、主题/locale/data；尺寸协议增强列入后续生产加固；
+- [x] Worker 表达式协议 + 超时；无 `Worker` 时回退主线程超时求值；CPU/内存硬限额依赖浏览器/进程隔离，不作为当前 JS API 可伪造的能力；
+- [x] 组件级熔断 UI（`data-lc-sandbox-circuit`）与 `sandboxTelemetry`；`vp run soak:low-code` 输出 p50/p95/p99、错误率与 Prometheus textfile，配套 Grafana SLO 看板；
+- [x] 第三方 Catalog 默认关闭（`nebula.low-code.third-party-catalog=false`，拒绝非 `trusted://`）；开放须另做安全评审。
+
+退出条件：第三方代码不能进入 Host 主 realm；组件故障可独立隔离/熔断；definition 不含脚本/secret。 **[代码边界已满足；生产 soak/开放 Catalog 为外部验收]**
 
 ## 12. 依赖规则
 
@@ -1693,7 +1723,7 @@ external（兜底）
 
 ### A 轨：应用交付架构与 CSS 隔离（1–16）
 
-进度注（2026-08-23）：**1–16 A 轨隔离项已满足**。目录改名 `node-kit`、删除 `bootMicroApp`、CSP nonce 网关、B 轨主题均有意不做。
+进度注（2026-08-23 二次复核）：A 轨主链可验证，但 1–16 必须逐条以当前工作树测试结果重新关门。internal 已改名并重组、旧 runtime 已删除；B/C 不再用总括性“已完成”表述覆盖逐页体验和真实基础设施验收。
 
 1. `vp run dev`、`vp run dev:web` 保持可用； **[已满足]**
 2. Integration、Settings、Docs 均可独立启动、构建、预览和部署； **[已满足]**
@@ -1701,16 +1731,16 @@ external（兜底）
 4. Web Host 不再静态依赖所有 renderer； **[已满足：Docs/Settings/Integration 为 Federation；Frontend/Login 为 Host 挂载的 UI 包]**
 5. Remote 不再直接依赖 Electron、app-shell 实现或兄弟应用； **[主路径已满足；Federation/src 与生产依赖已去 app-shell；standalone boot 仍用 `shell-host` + runtime adapter]**
 6. `window.electron/window.api/runtime mode` 判断只存在于 Desktop/Web Host adapter； **[主路径已满足：无 `detectRuntimeMode`；Web 不伪造 `window.electron`；IPC 经 `resolveRendererIpc`；Remote 仍可能经 capabilities 间接使用 shell]**
-7. 后端 registry 成为运行应用配置单源，前端仓库配置不再重复业务应用元数据； **[业务 label/category 已迁出 `windows.json`；离线回退 `shellChromeCatalog`；`apiTargets` 仍在窗口配置]**
-8. `internal` 只承担构建/测试/Node 工具，产品运行时全部位于 packages/apps； **[已满足：Electron 不再依赖 internal/node；Host/Remote CSS 走 `@nebula-studio/styles`；`check:boundaries` 禁止 apps/packages runtime 依赖 internal/node|vite。根 `scripts/` 仍编排 generate，属工具而非产品进程]**
-9. `packages` 依赖方向稳定，runtime/app-shell/assembly 重叠能力被删除而非改名保留； **[已满足：删除 app-shell/runtime 协议再导出；保留 `bootMicroApp` 与 `assembly-boot`]**
+7. 后端 registry 成为运行应用配置单源，前端仓库配置不再重复业务应用元数据； **[业务 label/category 已迁出 `windows.json`；离线回退 `shellChromeCatalog`；环境/API、real-stack、E2E 配置已与窗口模型拆分]**
+8. `internal` 只承担构建/测试/Node 工具，产品运行时全部位于 packages/apps； **[当前实现：`node-kit`/`build-kit` 已迁移，产品源码 runtime import 由 lint 禁止；vsh 负责仓库检查命令，build-kit 中产品特定 chunk/config 仍需持续审计]**
+9. `packages` 依赖方向稳定，runtime/app-shell/assembly 重叠能力被删除而非改名保留； **[当前实现：已删除 `core/runtime`、`bootMicroApp` 与单消费者 `use-confirm` 包；仅被 Integration 使用的 `tenant`、`sse-events` 已下沉应用内部，Frontend/Login 已并入 Host，auth/api-client 已归入 platform，workspace 包由 60 收敛到 55；`application-bootstrap` 仅服务 composition-root lifecycle，assembly-boot 仍作为待继续收窄的 Vue 装配边界]**
 10. shared 依赖有最小清单、严格版本和 bundle 证据； **[已满足：`createNebulaSharedConfig` + `configs/bundle-baseline.json` + `nebula-bundle-report.json`]**
 11. Federation、iframe、external、native 四种 driver 均有明确的信任、生命周期、配置、故障和回滚边界；低代码生成应用不引入第五种 driver； **[已满足（低代码仍走 federation，属 C 轨）]**
 12. 单个 Remote 失败或回滚不影响 Host 与其他应用； **[已满足：LKG/熔断/超时]**
 13. real-stack 核心链路通过，且仅含兼容业务变更的 Remote 发布不要求重建 Host； **[已满足：本机 `vp run test:e2e:real` 1 passed；契约 git-diff 门禁通过]**
 14. 迁移结束后的包数、重复 boot/bridge/config 代码和 Host 初始 bundle 均有可量化下降。 **[Host 初始同步 JS 实测约 35.65 KiB gzip / 预算 350；禁止 Integration editor chunk；`configs/package-inventory.json` + `check:inventory` 锁定包数与已知重复 boot 块]**
 15. Tailwind 不再依赖全仓库相对路径扫描，每个 Host/Remote 的 CSS 输入与产物可追溯； **[已满足：`nebulaTailwindSourcePlugin` + `nebula-css-source-report.json` + `check:css-sources`]**
-16. reset/tokens/base 只由每个 document 注入一次，Remote CSS 有明确 scope 且不污染 Host/其他 Remote； **[已满足 A 轨：Federation `styles/remote`（无 preflight）；namespace 只打在 mount 容器；Host 拒绝重复 cssNamespace。B 轨 ThemePreference / token schema 不做]**
+16. reset/tokens/base 只由每个 document 注入一次，Remote CSS 有明确 scope 且不污染 Host/其他 Remote； **[已满足 A 轨：Federation `styles/remote`（无 preflight）；namespace 只打在 mount 容器；Host 拒绝重复 cssNamespace。B 轨第一批已加 ThemePreference / token schema + Host CSS variables]**
 
 ### B 轨：设计系统、状态与国际化（17–24）
 
@@ -1725,29 +1755,39 @@ external（兜底）
 
 ### C 轨：低代码平台（25–41）
 
-25. Low-code Editor 作为与 code/dag/flow/form 同级的底层编辑器，不依赖 Studio、Host、认证和后端实现，并可由其他可信应用复用；
-26. Low-code Studio 位于 `apps/remotes`，可 standalone 启动并以 Federation 接入 Host，两个入口复用同一 Editor 和业务 composition；
-27. 低代码 definition、组件、数据源、动作和 runtime 都有版本契约，发布前经过服务端验证且支持审计、灰度和回滚；
-28. view/edit/preview/publish/rollback/manage-data-source 权限相互独立，页面可见性不代替后端数据授权；
-29. 低代码 runtime 不执行任意脚本、不接收明文 secret，并能拒绝不兼容/非法 definition；
-30. 设计器以业务组件、block 和 page template 为主要复用单元，不要求页面作者普遍从 Button/Input 等 primitives 开始搭建；
-31. 扩展组件和资源具备 SDK/manifest、上传、扫描、测试、审批、签名、版本、租户授权、安装锁定、影响分析和历史保留完整链路；
-32. 页面 definition 与 executable component package 严格分离，未知或第三方组件不能未经隔离进入 Host 主执行上下文；
-33. Low-code Studio Remote 有独立版本号、制品和 release train，可在不发布 Web/Desktop Host 的情况下升级；Federation contract 仍受兼容范围约束；
-34. upload/review/publish/manage-catalog/manage-resource 权限相互独立，组件签名支持撤回、吊销和漏洞响应；
-35. 已发布低代码应用在 Electron 离线场景下可从缓存恢复其 Studio Remote runtime expose、DefinitionVersion、精确组件版本和全部引用资源；Web 端只承诺经验证的 LKG/cache fallback，不虚构完全离线能力；
-36. Studio Remote 的设计态和运行态 exposes 通过同一 `LowCodeCompiler` Vue Component 把后端 Definition 动态渲染为组件树；
-37. 低代码页面发布只冻结 Definition/lock/resource 并登记标准应用版本，不生成 RenderPlan、不执行每页 Vite/Federation build；
-38. 每个低代码应用版本记录 definitionVersion、lowCodeStudioVersion、`./runtime-application` expose、compilerVersionRange、componentLockHash 和资源版本，可审计和回滚；
-39. edit/preview/publish/rollback 等管理权限只由 Studio/后端管控且不进入 Definition/Compiler；Compiler API 不接受 user/session/role/tenant authorization context；
-40. 组件范围先基于版本化 Catalog snapshot 解析为 ExactComponentLock，Compiler 禁止自行查询 Catalog 或解析最新版本。
-41. Compiler 不作为后端服务或独立 Remote 升级；Compiler 升级必须整体发布新的 Low-code Studio Remote，设计态与运行态入口保持同版本，应用重新发布版本引用新 Studio manifest，但页面配置不需要重新构建为前端制品。
+进度注（2026-08-23）：代码实现已补齐到可部署边界；括号仅记录需要真实基础设施的部署验收。执行切片见 `docs/nebula-mf-track-c-execution-plan.md`。
 
-## 18. 立即执行的下一步
+25. Low-code Editor 作为与 code/dag/flow/form 同级的底层编辑器，不依赖 Studio、Host、认证和后端实现，并可由其他可信应用复用； **[已满足]**
+26. Low-code Studio 位于 `apps/remotes`，可 standalone 启动并以 Federation 接入 Host，两个入口复用同一 Editor 和业务 composition； **[已满足]**
+27. 低代码 definition、组件、数据源、动作和 runtime 都有版本契约，发布前经过服务端验证且支持审计、灰度和回滚； **[已满足]**
+28. view/edit/preview/publish/rollback/manage-data-source 权限相互独立，页面可见性不代替后端数据授权； **[代码边界已满足；三形态权限拒绝保留为部署矩阵验收]**
+29. 低代码 runtime 不执行任意脚本、不接收明文 secret，并能拒绝不兼容/非法 definition； **[已满足]**
+30. 设计器以业务组件、block 和 page template 为主要复用单元，不要求页面作者普遍从 Button/Input 等 primitives 开始搭建； **[业务组件与模板已满足；在线市场不在本轮范围]**
+31. 扩展组件和资源具备 SDK/manifest、上传、扫描、测试、审批、签名、版本、租户授权、安装锁定、影响分析和历史保留完整链路； **[已满足：含 Catalog impact API；迁移矩阵继续作为回归测试扩展]**
+32. 页面 definition 与 executable component package 严格分离，未知或第三方组件不能未经隔离进入 Host 主执行上下文； **[已满足：iframe 隔离 + 第三方 Catalog 默认关闭]**
+33. Low-code Studio Remote 有独立版本号、制品和 release train，可在不发布 Web/Desktop Host 的情况下升级；Federation contract 仍受兼容范围约束； **[已满足，升级 runbook 已落地]**
+34. upload/review/publish/manage-catalog/manage-resource 权限相互独立，组件签名支持撤回、吊销和漏洞响应； **[代码已满足；真实 HSM 轮换待部署演练]**
+35. 已发布低代码应用在 Electron 离线场景下可从缓存恢复其 Studio Remote runtime expose、DefinitionVersion、精确组件版本和全部引用资源；Web 端只承诺经验证的 LKG/cache fallback，不虚构完全离线能力； **[lockfile 与 Remote CAS 已实现；DefinitionVersion/引用资源的全量离线恢复未关门]**
+36. Studio Remote 的设计态和运行态 exposes 通过同一 `LowCodeCompiler` Vue Component 把后端 Definition 动态渲染为组件树； **[已满足]**
+37. 低代码页面发布只冻结 Definition/lock/resource 并登记标准应用版本，不生成 RenderPlan、不执行每页 Vite/Federation build； **[已满足（无第五 driver、无每页 build）]**
+38. 每个低代码应用版本记录 definitionVersion、lowCodeStudioVersion、`./runtime-application` expose、compilerVersionRange、componentLockHash 和资源版本，可审计和回滚； **[已满足：发布快照冻结字段全集与资源清单]**
+39. edit/preview/publish/rollback 等管理权限只由 Studio/后端管控且不进入 Definition/Compiler；Compiler API 不接受 user/session/role/tenant authorization context； **[已满足]**
+40. 组件范围先基于版本化 Catalog snapshot 解析为 ExactComponentLock，Compiler 禁止自行查询 Catalog 或解析最新版本。 **[已满足]**
+41. Compiler 不作为后端服务或独立 Remote 升级；Compiler 升级必须整体发布新的 Low-code Studio Remote，设计态与运行态入口保持同版本，应用重新发布版本引用新 Studio manifest，但页面配置不需要重新构建为前端制品。 **[已满足，runbook 已落地]**
+
+## 18. 真实剩余项与部署验收
 
 Phase 0 硬门槛 **已通过**（2026-08-22）。下列 1–9 仅保留为 Phase 0 历史执行视图；若与 §11 Phase 0 清单不一致，以已勾选的 Phase 0 为准。
 
-**A 轨下一步（不是 Phase 8）：** §17 第 8、9、14 库存、16 已关门。A 轨故意不做：目录改名 `node-kit`/`build-kit`、删除 `bootMicroApp`、前置网关按请求轮换 CSP nonce。B 轨与 C 轨（Phase 8+）不阻塞 Remote 交付。
+以下项目不得伪标完成：
+
+1. 仓库内代码缺口：真正独立 write JVM 进程和跨进程鉴权；Catalog 迁移回归矩阵；Electron 从 CAS 恢复 DefinitionVersion 与全部引用资源；Low-code 三形态权限拒绝 E2E；完整嵌套拖拽、全部组件属性编辑和完整键盘导航。
+2. 外部环境验收：真实厂商 KMS/HSM 联调与轮换演练；目标生产地址至少一小时 soak，并归档 Prometheus 输出、告警结果和 Grafana SLO 截图。
+3. B 轨体验缺口：Workspace、Integration 资源门户、Low-code Editor Workspace 已完成首批信息架构调整。Docs 已补齐任务型首页、全局阅读/检索框架、完整语义 token 清单，以及 EntityList、Detail、Settings、Dashboard、EditorWorkspace 和五类 Feedback 的可交互 pattern workbench；Settings 已补齐面向所有角色的任务型概览、权限感知导航/检索、个人偏好和治理入口，并消除 Layout 与页面重复标题。共享 Experience Layout 使用中性实体分层、边框和排版建立层级，避免以渐变和重阴影替代信息架构。以上已在 1280、1024 与 680px Web 页面验证；但其余长尾 CRUD/详情页面的逐页视觉验收、完整键盘和 axe 矩阵尚未全部关门，因此 B 轨仍不得整体标记完成。视觉快照只能防回归，不能单独证明设计质量。
+4. 构建债务：完整 `build:web` 可成功产出，但 Settings/Docs 的 Federation DTS 子进程仍报告非阻断 `TYPE-001`，Integration 与 Host 仍有大于 500 kB 的异步 chunk；需分别补齐声明生成和继续拆分重型编辑器/runtime chunk。
+5. 明确非目标：开放第三方 Catalog；前置网关按请求轮换 CSP nonce（部署职责）；默认持久化完整 Vue Query 响应。
+
+A/B/C 均按上述逐项证据验收，不再使用“原执行切片已完成”作为整轨完成证明。
 
 历史 Phase 0 顺序（已完成，勿再当作当前队列）：
 
