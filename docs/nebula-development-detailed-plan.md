@@ -1,8 +1,8 @@
 # Nebula 跨仓库详细开发计划
 
-> 最后更新：2026-08-01
-> 代码基线：`nebula@3d35d13`、`nebula-studio@5a36a7e`
-> 依据：[当前实现状态分析](./nebula-current-state-analysis.md)。本文只保留尚未完成或需要重新验收的工作，不重复记录已经完成的配置中心、插件主链路和前端 Phase 1–8 历史过程。
+> 最后更新：2026-09-08
+> 代码基线：`nebula@372f51b`、`nebula-studio@4066718`
+> 依据：[当前实现状态分析](./nebula-current-state-analysis.md)。本文保留尚未完全生产化闭环的跨仓库工作，并对已完成项与运行拓扑（如 Executor 端口调整至 8088、独立写网关 8092、Module Federation 架构等）进行校准。
 
 ## 1. 计划原则
 
@@ -55,7 +55,7 @@ W0/G0 已于 2026-08-01 完成。W1 与 W2 现在可并行；W3 与 W4 可按契
 ### 4.2 前端与编排
 
 - [x] 保持 `scripts/e2e/run-real-stack.ps1` 使用三个正式平台应用，不退回 demo 掩盖问题。
-- [x] 服务启动后逐个验证 8090、8080、8081 健康端点。
+- [x] 服务启动后逐个验证 8090、8080、8088 健康端点（低代码写网关 8092 按需验证）。
 - [x] 从在线 8090 OpenAPI 严格生成契约；在线请求失败时禁止回退已提交契约，并执行生成文件差异检查。
 - [x] 失败日志继续按 Platform/Integration/Executor/Web 分域保存。
 - [x] 复用已健康的用户服务时不记录或终止其监听 PID；只清理本次脚本启动且所有权校验通过的进程。
@@ -78,7 +78,7 @@ G0 已通过：
 
 - Java 25.0.1、Maven 3.9.16 下，三个正式应用及其 143 个 Reactor 模块定向构建成功；
 - 配置、响应转换器、集群接管、租约围栏、安全配置、OpenAPI 与三个 ApplicationContext 共 29 项目标测试通过；
-- `platform-console`、`platform-integration`、`platform-integration-executor` 分别在 8090、8080、8081 启动并通过健康检查；
+- `platform-console`、`platform-integration`、`platform-integration-executor` 分别在 8090、8080、8088 启动并通过健康检查（低代码独立写网关在 8092 提供写保护）；
 - 8090 在线 OpenAPI 返回 3.1.0、132 条路径，生成快照与 TypeScript 契约已刷新且幂等检查通过；
 - 在线 OpenAPI 按 token 或会话型 session/oauth 登录模式声明对应认证方案，仅把启动期静态公开路径标记为公开；动态数据库规则采用保守的“仍标记受保护”文档策略；
 - 数据库监控端点不再公开，所有操作均要求 `ADMIN` 角色；真实栈验证未认证访问返回 401；
@@ -220,7 +220,7 @@ G0 修复同时消除了动态注册 `JdbcTemplate` 时 JDBC ConfigRepository �
 
 - 统一 camel-monitor 与 observability 数据模型；
 - 指标和 Trace 从进程内 Map 迁移到可查询后端；
-- 评估 OpenTelemetry/Micrometer，建立跨 8090/8080/8081 的关联 ID。
+- 评估 OpenTelemetry/Micrometer，建立跨 8090/8080/8088/8092 的关联 ID。
 
 ### 9.3 插件供应链
 

@@ -9,18 +9,22 @@
 | [模块规划.md](./模块规划.md) | 当前模块树、职责边界、运行拓扑和依赖原则 |
 | [nebula-current-state-analysis.md](./nebula-current-state-analysis.md) | 基于代码证据的全栈实现快照、已知缺口和风险 |
 | [nebula-development-detailed-plan.md](./nebula-development-detailed-plan.md) | 从当前缺口出发的跨仓库实施顺序与验收关口 |
-| [nebula-studio-frontend-refactoring-plan.md](./nebula-studio-frontend-refactoring-plan.md) | 前端现状、已完成重构及剩余增量工作 |
-| [nebula-module-federation-frontend-refactoring-plan.md](./nebula-module-federation-frontend-refactoring-plan.md) | Host/Remote、Module Federation、独立启动、应用注册中心与前端包重组的跨仓库重构计划 |
+| [nebula-studio-frontend-refactoring-plan.md](./nebula-studio-frontend-refactoring-plan.md) | 前端架构现状与已完成增量重构记录 |
+| [nebula-module-federation-frontend-refactoring-plan.md](./nebula-module-federation-frontend-refactoring-plan.md) | Host/Remote、Module Federation、独立启动、应用注册中心与前端包重组的跨仓库重构总计划 |
+| [nebula-mf-track-a-execution-plan.md](./nebula-mf-track-a-execution-plan.md) | Module Federation A 轨（应用交付架构、Host/Remote与构建链）执行计划 |
+| [nebula-mf-track-b-execution-plan.md](./nebula-mf-track-b-execution-plan.md) | Module Federation B 轨（前端体验底座、设计系统、State/Query/i18n）执行计划 |
+| [nebula-mf-track-c-execution-plan.md](./nebula-mf-track-c-execution-plan.md) | Module Federation C 轨（低代码平台、Compiler、Studio与安全发布）执行计划 |
+| [nebula-studio-development-record-plan.md](./nebula-studio-development-record-plan.md) | 前端开发记录自动化生成规范与实施方案 |
 | [PostgreSQL_实时离线一体化数据平台方案汇总.md](./PostgreSQL_实时离线一体化数据平台方案汇总.md) | 独立的数据平台方案，不作为 Nebula 当前实现状态的证据 |
 
 ## 当前审查基线
 
-工作区文档于 **2026-08-01** 按以下代码基线重审：
+工作区文档于 **2026-09-08** 按以下代码基线重审：
 
 | 仓库 | 分支 | 提交 |
 | --- | --- | --- |
-| `nebula` | `development` | `3d35d13ad23feb4ce367585b77de90094f3f2e26` |
-| `nebula-studio` | `development` | `5a36a7e09787889607d53ddea65b3e25b98b5397` |
+| `nebula` | `development` | `372f51bfaa8a6b9c9885a1a7fd675e3b9d7923ed` |
+| `nebula-studio` | `development` | `406671858aeeffe57cf0320ebfd0d1f6ac4e34fd` |
 
 判断优先级为：可执行源码和构建描述符 > 运行配置与迁移 > 仓库内状态文档 > 历史计划。代码中存在类或接口，不等于对应应用已经启动或端到端链路已经通过。
 

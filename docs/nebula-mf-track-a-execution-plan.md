@@ -1,20 +1,25 @@
 # Nebula Module Federation A 轨执行计划
 
-> 依据：`nebula-module-federation-frontend-refactoring-plan.md` v1.1  
+> 依据：`nebula-module-federation-frontend-refactoring-plan.md` v1.2  
 > 范围：仅 A 轨（§17 第 1–16 条）。不等待 B/C。  
 > 仓库：`nebula-studio`（前端）+ `nebula`（Phase 3 registry）  
-> 开工日：2026-08-22
+> 开工日：2026-08-22  
+> 状态复核：2026-09-08
 
-## 当前进度（2026-08-23）
+## 当前进度（2026-09-08）
 
-A 轨 Phase 0–7 主路径已落地。本机验收：`vp run test:e2e:real` 1 passed（复用 Console/Integration/Executor）；`vp run test:e2e:electron` 已通过。Phase 1 CSS/bundle：共享 `theme.css` 不再全仓库 `@source`；`nebulaTailwindSourcePlugin` 按制品依赖注入扫描集；`check:css-sources` / `check:bundle` + `configs/bundle-baseline.json`。Host 初始同步 JS 约 **35.65 KiB gzip**（预算 350）；docs / settings / integration Remote gzip 有上限。`**/.mf/` 已 gitignore。§17 **8 / 9 / 14 库存 / 16** 已关门。
+A 轨 Phase 0–7 主路径已全面落地并稳定运行。近期持续加固完成：
+
+1. **统一 AppDock / Chrome Catalog 引导机制**：将 `SHELL_CHROME_CATALOG` 与应用发现引导抽入 `@nebula-studio/app-shell`，并在 Electron 主进程早启动阶段与 Web 宿主同步调用，彻底解决 Electron 与 Web 端集成应用卡片数量不一致、单卡片行宽溢出及视图生命周期失步问题；
+2. **构建与依赖链升级**：完成 Vite+ 0.3.0、Vite 8.2.2、Vitest 5.0.0、Electron 44.2.0、pnpm 11.25.0 升级；
+3. **测试验证**：`vp run test:e2e:real`（复用 Console/Integration/Executor 8088 真实服务）与 `vp run test:e2e:electron` 已通过；Host 初始同步 JS gzip 维持在 35 KiB 左右；§17 涉及 A 轨条目全部关门。
 
 **历史保留项复评：** A-R1 已完成：`apiTargets`、real-stack、E2E patterns 分别迁至 `configs/environments.json`、`configs/real-stack.json`、`configs/e2e.json`，生成器/Vite/real-stack 脚本读取拆分配置并通过 schema 校验。目录改名没有运行时收益；`bootMicroApp` 是受限的 standalone/Host composition API且 Federation 已禁止调用；每请求 CSP nonce 属部署网关职责。
 
 ## 复评实施结果
 
-| ID   | 工作项 | 验收 |
-| ---- | ------ | ---- |
+| ID   | 工作项                 | 验收                                                                                                                                                          |
+| ---- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | A-R1 | 配置职责拆分（已完成） | `configs/windows.json` 只保留 shell/Electron renderer/preload/presentation；三个拆分配置均有 schema；生成器、Vite proxy、OpenAPI、soak、real-stack 脚本已切换 |
 
 A-R1 已完成且不要求删除 `bootMicroApp`、改目录名或等待 B/C。
@@ -659,12 +664,12 @@ vp run --filter @nebula-studio-internal/vite test
 
 产品运行时离开 `internal`：Electron `findMonorepoRoot` 在 `federation-protocol`；CSS 产品入口 `@nebula-studio/styles/{document,remote}`。删除 app-shell / runtime 协议再导出，保留 `bootMicroApp`。Federation 只用无 preflight 的 remote CSS，`cssNamespace` 打在 mount 容器，Host 拒绝重复 namespace。包数与重复 boot 写入 `configs/package-inventory.json`。
 
-| ID     | 工作项              | 验收                                                                 |
-| ------ | ------------------- | -------------------------------------------------------------------- |
-| A-8    | internal 运行时边界 | Electron 无 internal/node 生产依赖；apps/packages 禁止 runtime 引用  |
-| A-9    | 重叠删除            | app-shell/runtime 不再导出协议；调用方直连 shell-protocol            |
-| A-16   | 生产 CSS 分层       | Federation `styles/remote`；容器级 appearance；重复 namespace 拒绝   |
-| A-14   | 包库存              | `vp run check:inventory`；Host gzip 仍走 `check:bundle`              |
+| ID     | 工作项              | 验收                                                                                                         |
+| ------ | ------------------- | ------------------------------------------------------------------------------------------------------------ |
+| A-8    | internal 运行时边界 | Electron 无 internal/node 生产依赖；apps/packages 禁止 runtime 引用                                          |
+| A-9    | 重叠删除            | app-shell/runtime 不再导出协议；调用方直连 shell-protocol                                                    |
+| A-16   | 生产 CSS 分层       | Federation `styles/remote`；容器级 appearance；重复 namespace 拒绝                                           |
+| A-14   | 包库存              | `vp run check:inventory`；Host gzip 仍走 `check:bundle`                                                      |
 | A-skip | 复评后保留          | CSP nonce 网关（部署职责）；目录改名（无收益）；删除 bootMicroApp（仍有 standalone/Host composition 消费者） |
 
 ```text

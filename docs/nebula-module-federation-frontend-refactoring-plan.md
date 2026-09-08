@@ -1,15 +1,19 @@
 # Nebula 前端 Module Federation 架构重构计划
 
-> 文档版本：v1.1
+> 文档版本：v1.2
 > 制定日期：2026-08-22
-> 进度复核：2026-08-23（二次代码复核；完成度只按可运行代码、自动化测试和外部验收证据判定，不能由历史勾选项推导）
+> 进度复核：2026-09-08（三次代码复核；完成度只按可运行代码、自动化测试和外部验收证据判定，不能由历史勾选项推导）
 > 适用仓库：`nebula/`、`nebula-studio/`
-> 代码基线：`nebula@4c93ea8dcb1b31159815ee0990eb9316149fc3d7`、`nebula-studio@20951519f22a94194e5e5c5794e72d1258a4ab0b`（2026-08-23 复核；实施前必须重新记录 HEAD，基线不是永久常量。nebula 低代码 Java 若尚未进该 commit，以工作区为准）
+> 代码基线：`nebula@372f51bfaa8a6b9c9885a1a7fd675e3b9d7923ed`、`nebula-studio@406671858aeeffe57cf0320ebfd0d1f6ac4e34fd`
 > 文档位置：工作空间根目录 `docs/`；本文是跨仓库规划，不替代两个仓库各自的开发规范。
 
-> v1.1 变更摘要：补齐单计划内的 A/B/C 轨道关门规则；统一 Phase 0 与立即执行清单；修正 Phase 8–10 前置依赖；将 CSS 隔离替代方案纳入同一硬门槛；统一目标命令格式。此前已补齐 iframe capability 协议、双 expose 隔离、低代码运行依赖、现有 low-render 迁移和 Electron 登录窗口边界。
+> v1.2 变更摘要：
 >
-> 2026-08-23 二次复核：A 轨 Federation 主链已落地，但 internal/scripts/package 收口在本轮继续整改；B 轨具备 token/theme/pattern 基础和视觉矩阵，不等于 §7.4 的全部存量界面已经现代化；C 轨仓库实现与真实独立进程、厂商 HSM、生产 soak/SLO 证据分别计数，不再使用“代码已到可部署边界”替代完成证明。
+> 1. 更新代码基线与技术栈版本（Vite+ 0.3.0、Vite 8.2.2、Vitest 5.0.0、Vue 3.5.42、Electron 44.2.0、pnpm 11.25.0）；
+> 2. 表单体系全面迁移至 `@tanstack/vue-form@1.33.5` + `zod@4.5.4`，清理旧 vee-validate；
+> 3. 统一 Web 与 Electron 端的 AppDock / Chrome Catalog 初始注册（`bootstrapShellChromeIntegratedApps`），解决卡片与视图状态一致性；
+> 4. 加固低代码画布响应式克隆逻辑（`cloneDraft`）及 Electron 下拖放行为；
+> 5. 同步后端 Executor 端口（8088）及低代码独立写网关（`platform-low-code-write:8092`）安全加固。
 
 ## 1. 执行摘要
 
@@ -80,13 +84,13 @@
 
 **A 轨历史保留项复评（2026-08-23）：** 历史切片中的“不做”只表示当时不跨轨施工，不自动成为永久非目标。按当前依赖图重新判定如下。
 
-| 来源            | 剩余                                                                                                                                                                                  |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Phase 1 `[A]`   | 已迁移为 `internal/node-kit` / `internal/build-kit`；包名、workspace link、lockfile、测试和边界规则同步更新。根检查命令由 `scripts/vsh` 统一承接，源码规则继续由 ESLint/Oxlint 承担。 |
-| Phase 1 `[A+B]` | A 的 `@source`/CSS report / 生产 CSS 分层已做；B 轨第一批（tokens / factory / Settings 主题）已落地，见 `docs/nebula-mf-track-b-execution-plan.md`                                    |
+| 来源            | 剩余                                                                                                                                                                                        |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Phase 1 `[A]`   | 已迁移为 `internal/node-kit` / `internal/build-kit`；包名、workspace link、lockfile、测试和边界规则同步更新。根检查命令由 `scripts/vsh` 统一承接，源码规则继续由 ESLint/Oxlint 承担。       |
+| Phase 1 `[A+B]` | A 的 `@source`/CSS report / 生产 CSS 分层已做；B 轨第一批（tokens / factory / Settings 主题）已落地，见 `docs/nebula-mf-track-b-execution-plan.md`                                          |
 | Phase 6 `[A]`   | 已删除 `bootMicroApp` 语义和 `packages/core/runtime`；standalone/Host composition root 改用 `platform/application-bootstrap` 的显式 lifecycle，Federation 仍直接实现 application contract。 |
-| Phase 7         | 前置网关按请求轮换 CSP nonce：仓库已提供构建期 nonce 占位符；每请求注入属于部署网关职责，不再描述成被 B/C 阻塞的代码项。                                                              |
-| §17 1–16        | **1–16 A 轨隔离项已关门**                                                                                                                                                             |
+| Phase 7         | 前置网关按请求轮换 CSP nonce：仓库已提供构建期 nonce 占位符；每请求注入属于部署网关职责，不再描述成被 B/C 阻塞的代码项。                                                                    |
+| §17 1–16        | **1–16 A 轨隔离项已关门**                                                                                                                                                                   |
 
 ### 2.5 B 轨进度（2026-08-23）
 
@@ -104,12 +108,12 @@ Phase 8–12 属于 **C 轨**，不计入 A 轨剩余。
 
 **C 轨部署环境验收：**
 
-| 来源     | 剩余                                                                          |
-| -------- | ----------------------------------------------------------------------------- |
+| 来源     | 剩余                                                                                                             |
+| -------- | ---------------------------------------------------------------------------------------------------------------- |
 | Phase 9  | 部分完成：已有基础拖放/排序/删除、局部键盘操作和现有编辑入口；完整嵌套排序、全部组件属性编辑与完整键盘导航未关门 |
-| Phase 10 | 仓库内 write surface、JWT 契约与 runbook 已有；真正独立的 write JVM 进程及跨进程鉴权未完成 |
-| Phase 11 | 已实现 JDK PKCS#11 HSM 验签适配；真实厂商 HSM 联调/轮换演练待部署环境         |
-| Phase 12 | 已实现 soak 阈值工具和 Grafana SLO 看板；生产一小时运行待部署地址             |
+| Phase 10 | 仓库内 write surface、JWT 契约与 runbook 已有；真正独立的 write JVM 进程及跨进程鉴权未完成                       |
+| Phase 11 | 已实现 JDK PKCS#11 HSM 验签适配；真实厂商 HSM 联调/轮换演练待部署环境                                            |
+| Phase 12 | 已实现 soak 阈值工具和 Grafana SLO 看板；生产一小时运行待部署地址                                                |
 
 ## 3. 当前架构事实与问题
 
@@ -157,19 +161,19 @@ Electron 与 Web/standalone 的差异通过 `window.electron`、`window.api`、`
 
 下表对照 2026-08-23 代码。未解决项不得因 A/B 执行切片关门而从问题清单消失。
 
-| 现状                                                    | 问题                                  | 状态（2026-08-23）                                                                                                                                       |
-| ------------------------------------------------------- | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/web` 静态依赖全部 renderer                        | Host 与所有子应用同构建、同发布       | **已解决**：Docs/Settings/Integration 为 Federation；Workspace/Login UI 由 Host boot 挂载，不再静态依赖三 Remote                                         |
-| `integration` / `settings` 依赖 `login` renderer        | 兄弟应用编译依赖，Remote 无法独立演进 | **已解决**：standalone `/login` 与 Host 均依赖平台包 `@nebula-studio/login-ui`；ESLint/inventory 禁止 Remote 再依赖 `@nebula-studio-renderer/login`      |
+| 现状                                                    | 问题                                  | 状态（2026-08-23）                                                                                                                                              |
+| ------------------------------------------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/web` 静态依赖全部 renderer                        | Host 与所有子应用同构建、同发布       | **已解决**：Docs/Settings/Integration 为 Federation；Workspace/Login UI 由 Host boot 挂载，不再静态依赖三 Remote                                                |
+| `integration` / `settings` 依赖 `login` renderer        | 兄弟应用编译依赖，Remote 无法独立演进 | **已解决**：standalone `/login` 与 Host 均依赖平台包 `@nebula-studio/login-ui`；ESLint/inventory 禁止 Remote 再依赖 `@nebula-studio-renderer/login`             |
 | `runtime` 依赖 electron-bridge、auth                    | “runtime” 是产品编排器                | **已调整**：删除 `packages/core/runtime` 与 `bootMicroApp`；standalone/Host 使用 `platform/application-bootstrap/startApplication`，Federation 不经过该生命周期 |
-| `app-shell` 混杂协议/存储/认证/Electron                 | 导出面过宽                            | **主路径已解决**：协议在 `shell-protocol`，适配在 `shell-host`，认证在 `auth-provider`；`app-shell` 现为窗口配置/帮助/integration registry               |
-| `nebula-layout` 以 electron-bridge 为 peer              | 布局带宿主假设                        | **已解决**：已去掉 electron-bridge peer；依赖 `shell-protocol` + assembly/UI                                                                             |
-| `nebula-shell` 位于 core 且含 Vue 产品组件              | core / UI 语义不一致                  | **已解决**：迁到 `packages/ui/shell-ui`（包名仍为 `@nebula-studio/nebula-shell`）                                                                        |
-| `assembly-boot` 位于 `apps/sub-web`                     | 应用层反向承担平台职责                | **已解决**：迁到 `packages/platform/assembly-boot`                                                                                                       |
-| `frontend` 与 shell 都含 Shell 职责                     | composition 与产品组件重叠            | **主路径已解决**：Host `bootHostWorkspace` 挂载 `main/app`；产品 Shell UI 在 `shell-ui`                                                                  |
-| 各子应用 `main.ts` 重复 runtime 判断                    | 启动模式由应用猜测                    | **已解决**：删除 `detectRuntimeMode`；Host/standalone 入口显式传入 mode                                                                                  |
-| 页面直接使用 `window.electron` / `window.api`           | Remote 无法在普通浏览器稳定运行       | **主路径已解决**：IPC 经 `resolveRendererIpc`；页面侧 ESLint 禁止探测；Web 不伪造 `window.electron`                                                      |
-| API namespace/proxy/targets 跨 configs/internal/scripts | 配置链路不是单向                      | **已解决（A-R1）**：`windows.json` 只保留窗口/preload；`environments` / `real-stack` / `e2e` 分文件                                                      |
+| `app-shell` 混杂协议/存储/认证/Electron                 | 导出面过宽                            | **主路径已解决**：协议在 `shell-protocol`，适配在 `shell-host`，认证在 `auth-provider`；`app-shell` 现为窗口配置/帮助/integration registry                      |
+| `nebula-layout` 以 electron-bridge 为 peer              | 布局带宿主假设                        | **已解决**：已去掉 electron-bridge peer；依赖 `shell-protocol` + assembly/UI                                                                                    |
+| `nebula-shell` 位于 core 且含 Vue 产品组件              | core / UI 语义不一致                  | **已解决**：迁到 `packages/ui/shell-ui`（包名仍为 `@nebula-studio/nebula-shell`）                                                                               |
+| `assembly-boot` 位于 `apps/sub-web`                     | 应用层反向承担平台职责                | **已解决**：迁到 `packages/platform/assembly-boot`                                                                                                              |
+| `frontend` 与 shell 都含 Shell 职责                     | composition 与产品组件重叠            | **主路径已解决**：Host `bootHostWorkspace` 挂载 `main/app`；产品 Shell UI 在 `shell-ui`                                                                         |
+| 各子应用 `main.ts` 重复 runtime 判断                    | 启动模式由应用猜测                    | **已解决**：删除 `detectRuntimeMode`；Host/standalone 入口显式传入 mode                                                                                         |
+| 页面直接使用 `window.electron` / `window.api`           | Remote 无法在普通浏览器稳定运行       | **主路径已解决**：IPC 经 `resolveRendererIpc`；页面侧 ESLint 禁止探测；Web 不伪造 `window.electron`                                                             |
+| API namespace/proxy/targets 跨 configs/internal/scripts | 配置链路不是单向                      | **已解决（A-R1）**：`windows.json` 只保留窗口/preload；`environments` / `real-stack` / `e2e` 分文件                                                             |
 
 ### 3.3 `internal/` 的问题
 

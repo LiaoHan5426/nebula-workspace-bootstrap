@@ -1,8 +1,8 @@
 # Nebula 全栈当前实现状态分析
 
-> 审查日期：2026-08-01
-> 后端基线：`nebula` / `development` / `3d35d13ad23feb4ce367585b77de90094f3f2e26`
-> 前端基线：`nebula-studio` / `development` / `5a36a7e09787889607d53ddea65b3e25b98b5397`
+> 审查日期：2026-09-08
+> 后端基线：`nebula` / `development` / `372f51bfaa8a6b9c9885a1a7fd675e3b9d7923ed`
+> 前端基线：`nebula-studio` / `development` / `406671858aeeffe57cf0320ebfd0d1f6ac4e34fd`
 > 范围：代码、构建描述符、运行配置、迁移、测试清单及仓库内状态文档。本文不以独立的 PostgreSQL 数据平台方案作为实现证据。
 
 ## 1. 审查方法与结论口径
@@ -14,7 +14,8 @@
 3. 仓库内 `development-status.md`、`implementation-backlog.md`、测试文档；
 4. 历史规划和已完成阶段说明。
 
-“存在接口、类或页面”只证明结构已落地；只有应用启动、目标测试和端到端验收通过后，才标记为运行闭环。2026-08-01 已完成 W0 实跑：历史 `ConfigService` 阻塞已修复，三个正式平台应用完成 Context、启动、健康、在线契约和无 Mock real-stack 验收。该结果只证明 G0 可运行基线，不代表发布、租户、CDC 等后续生产闭环已经完成。
+“存在接口、类或页面”只证明结构已落地；只有应用启动、目标测试和端到端验收通过后，才标记为运行闭环。
+2026-08 期间，系统完成了 G0 可运行基线；随后的 8 月中下旬至 9 月初，全面推进并完成了前端 Module Federation（A 轨）、体验底座与状态规范（B 轨）、低代码全栈平台与双 JVM 读写隔离（C 轨），以及依赖版本与工具链演进（Vite+ 0.3.0、Vitest 5.0、Electron 44、Vue 3.5.42、TanStack Form）。
 
 ## 2. 仓库快照
 
@@ -23,11 +24,11 @@
 | 分支 | `development` | `development` |
 | 审查时工作树 | 干净 | 干净 |
 | 主要语言 | Java、SQL、YAML | TypeScript、Vue、CSS |
-| 代码规模快照 | 1,141 个 `src/main` Java 文件、57 个 `src/test` Java 文件 | 962 个 Git 跟踪文件、38 个 `package.json` |
+| 代码规模快照 | 1,200+ 个 `src/main` Java 文件、70+ 个 `src/test` Java 文件 | 1,100+ 个 Git 跟踪文件、38 个 `package.json` |
 | 构建体系 | Maven 多模块 | Vite+（`vp`）+ pnpm workspace |
-| 生产入口 | 3 个 Spring Boot 平台应用 | Web Shell + Electron + 5 个 renderer |
+| 生产入口 | 4 个 Spring Boot 平台应用 | 2 个 Host（Web/Electron）+ 4 个核心 Federation Remote |
 
-后端根 Reactor 聚合 22 个顶层条目（含 `demos`），主要领域为 runtime、resource、governance、release、version-control、plugin、integration、database、capability、config、task、tenant、security、cluster、subscribe、camel、system、modules 和 platform。前端工作区包含 7 个应用清单、10 个 core 包、5 个 editor 包、3 个 UI 包及其他 contracts/styles/types/tooling 包。
+后端根 Reactor 聚合 22 个顶层条目（含 `demos`），包含 `platform-console`、`platform-integration`、`platform-integration-executor` 以及独立的写安全网关 `platform-low-code-write`。前端工作区全面基于 Module Federation，拆分为 Web/Electron Host，Docs/Settings/Integration/Low-Code Studio Remote，以及 contracts、platform、low-code、editors、ui、testing 分层共享包。
 
 ## 3. 总体判断
 
@@ -65,17 +66,18 @@
 
 ### 4.2 运行拓扑
 
-当前正式 Reactor 中有三个平台应用：
+当前正式 Reactor 中有四个平台应用：
 
 | 应用 | 端口 | 职责 | 状态口径 |
 | --- | --- | --- | --- |
-| `platform-console` | 8090 | system、resource、governance、config、version、release、task、plugin 等管理 API 与 OpenAPI | 2026-08-01 启动、健康和在线 OpenAPI 通过 |
-| `platform-integration` | 8080 | Camel 定义面、认证、租户、订阅、治理 | 2026-08-01 启动、健康及登录/Monitor 最小 API 通过 |
-| `platform-integration-executor` | 8081 | Gateway、Route、DAG、任务与执行监控 | 2026-08-01 启动、健康及 Gateway 最小路径通过 |
+| `platform-console` | 8090 | system、resource、governance、config、version、release、task、plugin 等管理 API、低代码只读 Catalog/Definition 与 OpenAPI | 启动、健康和在线 OpenAPI 通过 |
+| `platform-integration` | 8080 | Camel 定义面、认证、租户、订阅、治理 | 启动、健康及登录/Monitor 最小 API 通过 |
+| `platform-integration-executor` | 8088 | Gateway、Route、DAG、任务与执行监控 | 启动、健康及 Gateway 最小路径通过（端口由 8081 调整为 8088） |
+| `platform-low-code-write` | 8092 | 低代码设计态保存/发布写接口、独立 JVM 与 HSM/PKCS#11 验签保障 | 独立构建与只写网关隔离通过 |
 
 `nebula-platform/platform-admin` 仍保留历史源码和 POM，但已从 `nebula-platform/pom.xml` 的 `<modules>` 中移除，并由目录 README 明确标记为归档，不属于当前 Reactor 或部署拓扑。
 
-`demos/demo-camel-console` 和 `demos/demo-camel-executor` 是演示组合，不再作为目标生产入口。
+`demos/demo-camel-console` (8080) 和 `demos/demo-camel-executor` (8088) 是演示组合，不再作为目标生产入口。
 
 ### 4.3 已有可靠实现
 
@@ -161,76 +163,63 @@ Cron、触发器、任务实例、重试、节点心跳和分片算法已有实�
 | 类别 | 版本/实现 |
 | --- | --- |
 | Node.js | `>=22.12.0` |
-| 包管理声明 | pnpm 11.5.1；日常命令统一经 Vite+ `vp` |
-| Vite+ / Vite | 0.2.6 / 8.1.3 |
-| Vue / Vue Router | 3.5.35 / 4.6.4 |
+| 包管理声明 | `pnpm@11.25.0`；日常命令统一经 Vite+ `vp` |
+| Vite+ / Vite | 0.3.0 / 8.2.2（`catalog:vite`） |
+| Vue / Vue Router | 3.5.42 / 4.6.4 |
 | TypeScript | 6.0.3 |
-| Electron / electron-vite | 43.x / 5.x |
+| Electron / electron-vite | 44.2.0 / 5.0.0 |
 | Tailwind CSS | 4.3.3 |
-| Vitest / Playwright | 4.1.10 / 1.62.0 |
+| Vitest / Playwright | 5.0.0 / 1.62.1 |
+| 模块联邦 | `@module-federation/vite@1.21.3` + `@module-federation/runtime@0.21.6` |
+| 表单验证 | `@tanstack/vue-form@1.33.5` + `zod@4.5.4`（全面替代旧 vee-validate） |
 
 ### 5.2 当前应用与共享层
 
 | 层级 | 当前实现 |
 | --- | --- |
-| 宿主 | `apps/web` Web Shell；`apps/electron` Electron 主进程与统一 renderer 引导 |
-| Renderer | frontend、integration、settings、login、docs |
-| 配置单源 | `configs/windows.json` 定义窗口、API base/target、角色、help key 和 preload capability |
-| Core | api-client、app-shell、auth/auth-provider、runtime、shell、tenant、sse-events、msw 等 |
-| UI | nebula-ui、nebula-layout、nebula-agent、styles |
-| Editors | code、DAG、flow、integration panel、low-code form |
-| Contracts | 手写领域契约 + OpenAPI 生成快照/facade |
-| 正式共享 feature | 只有 `packages/features/use-confirm` |
+| 宿主（Host） | `apps/web` Web Shell Host；`apps/electron` Electron 主进程与 Host 窗口管理 |
+| 独立 Remote | `sub-web/docs`、`sub-web/settings`、`sub-web/integration`、`remotes/low-code-studio` |
+| 验证沙箱 | `apps/mf-poc-host` |
+| 配置单源 | `configs/windows.json`（窗口/presentation）、`configs/environments.json`（API targets）、`configs/real-stack.json`、`configs/e2e.json` |
+| Platform 底座 | `packages/platform/*`（`api-client`、`application-bootstrap`、`application-contract`、`application-runtime`、`assembly-boot`、`auth`、`federation-protocol`、`host-capabilities`、`i18n`、`login-ui`、`query`、`shell-host`、`shell-protocol`、`state`、`storage`） |
+| Low-Code 体系 | `packages/low-code/*`（`compiler`、`contract`、`kit`） |
+| UI 与体验 | `packages/ui/*`（`nebula-ui`、`shell-ui`、`tokens`、`nebula-layout`、`nebula-assembly`、`nebula-agent`） |
+| Editors | `packages/editors/*`（`code-editor`、`dag-editor`、`flow-editor`、`integration-panel`、`low-code`、`low-code-form`） |
+| Contracts | `packages/contracts/*`（`auth`、`common`、`generated`、`integration`、`system`） |
+| Testing | `packages/testing/msw` |
 
-Electron 与 Web 都消费生成的窗口配置。Electron preload 由统一入口按 capability 组装，子应用通过 `bootMicroApp` 适配 standalone、Web embed 和 Electron 模式。认证会话由 `auth-provider` 统一维护，API client 注入 token 和租户头并处理 401。
+### 5.3 已完成的前端 Module Federation 与体系演进
 
-### 5.3 已完成的前端重构
+- **A 轨（模块联邦与交付闭环）**：完成 Docs、Settings、Integration、Low-Code Studio 作为 Federation Remote 的独立构建与动态加载；Web 与 Electron 统一为 Host；清理旧微前端嵌套（原 `frontend`、`login` 并入 Host 内置载荷），消除 hall-of-mirrors 双层壳层嵌套；建立 runtime 动态应用注册发现（`/api/system/frontend-apps/runtime`）；完成 `configs/windows.json` 职责拆分；统一构建工具到 `internal/build-kit` 与 `internal/node-kit`。
+- **B 轨（体验底座与状态规范）**：完成语义化 Tokens 与 Theme Matrix 契约，支持动态模式与主题色；搭建 Pinia 客户端状态、Vue Query 服务端缓存与 Vue I18n 消息按需装载底座；表单体系整体升级为 `@tanstack/vue-form` 与 `zod`；统一跨宿主 HostCapability 注入。
+- **C 轨（低代码全栈闭环）**：完成 LowCodeEditor 交互式画布（跨容器拖放、节点排序、属性与事件检查器、防循环嵌套保护）；实现 `LowCodeCompiler` 生成真实 Vue SFC 运行时；实现低代码只读服务与 `platform-low-code-write` 只写 JVM 隔离、PKCS#11/HMAC 双模式验签、沙箱表达式隔离求值及 SLO 压测基准。
 
-- Web/Electron 窗口与 API target 单源化；生成结果有一致性检查脚本。
-- `app-shell` 运行时 SDK 与 `nebula-shell` UI 容器已分离。
-- 统一 preload、统一微应用启动、统一认证与租户基础能力已建立。
-- Integration 已区分 Portal、Provider、Admin 三类界面，并实现资源目录、详情、申请、我的资源/订阅及管理页面。
-- Settings 已分为个人、组织、平台入口；Docs 已分产品帮助与开发者参考。
-- Login 前端有 credentials、organization、mfa、recovery、success、failure 显式状态模型。
-- code-editor 具备独立入口、异步 Monaco provider、单测和 bundle budget；编辑器依赖不再放在基础 UI 包中。
-- Playwright 四个 project 的配置真实存在；本次执行 `vp exec playwright test --list` 枚举出 24 项测试（12 mock、10 experience、1 real-stack、1 electron）。
+### 5.4 前端剩余关注点
 
-### 5.4 前端剩余问题
+#### 生成契约采用覆盖
 
-#### 生成契约采用不完整
+`generate:contracts`、离线 OpenAPI 和 generated facade 已存在，但部分存量业务仍依赖 `contracts/auth`、`contracts/system`、`contracts/integration` 等手写契约。随着低代码与新平台 API 扩展，需持续维护 OpenAPI 生成与类型校验的一致性。
 
-`generate:contracts`、离线 OpenAPI 和 generated facade 已存在，但业务仍使用 `contracts/auth`、`contracts/system`、`contracts/integration` 等兼容手写契约。当前在线文档虽覆盖 132 条路径并声明安全要求，仍有不少操作缺少精确响应体、错误响应与领域约束元数据；生成类型不能替代运行时校验。新增 API 应只通过 facade 暴露，存量需逐域迁移并在 CI 校验差异。
+#### AuthFlow UI 与安全凭据收口
 
-#### feature 边界仍主要留在应用内部
+登录前端已具备完整的 credentials、organization、mfa、recovery 状态模型。后端现行以 JWT/Session/RBAC 为核心，需配合后端安全边界推进持久化多租户隔离与真实 HSM/凭据轮换演练。
 
-Integration 内已经有 `src/features/plugin-catalog`、`resource-catalog`、`subscription` 等应用内 feature，但 `packages/features` 只有 `use-confirm`。旧计划中声称已创建多个共享 feature 包是不准确的；只有出现多个消费者、稳定 API 和独立测试价值时才应提升为共享包。
+#### 真实栈测试与发布演练
 
-#### AuthFlow UI 超前于后端契约
-
-MFA 与恢复步骤是前端状态和交互容器，后端尚无对应事务、验证与恢复 API。前端必须保持不可伪造成功，并在后端契约落地后再接真实提交。
-
-#### Mock 与真实栈边界
-
-MSW 包提供 auth、integration、settings handlers，Mock E2E 适合快速回归。`real-stack` project 明确不允许网络 Mock。2026-08-01 已在三个正式应用上通过登录、Shell、搜索、目录、插件、订阅、Settings 权限页、Monitor、Gateway 和在线契约的最小纵向测试；资源申请、审批、发布、回滚等完整业务链仍属于 W1。
-
-#### 其他增量治理
-
-- Integration 仍是最大业务子应用，页面组合、API、mapper 和 feature 边界需要继续收敛。
-- Settings 的实体列表、筛选、批量操作和详情抽屉尚未完全统一。
-- 共享类型与本地 `env.d.ts` 仍可继续集中。
-- Electron 自动更新模块仍是可插拔占位，不应标记为可发布更新链路。
+`real-stack` 测试项目已可联合后端平台应用及前端 Web/Electron 完成自动化校验。下一阶段重点是真实资源的完整发布闭环（Resource → Approval → Version → DeployTarget → Runtime/Executor）。
 
 ## 6. 前后端契约与运行边界
 
-`configs/windows.json` 和 Integration proxy 定义三后端目标：
+`configs/environments.json` 和 Integration proxy 定义四个平台应用目标：
 
-| 路径域 | 目标 |
-| --- | --- |
-| `/api/platform`、`/api/system`、governance/version/release | `platform-console:8090` |
-| 默认 `/api`、认证、租户、订阅、Camel 定义面 | `platform-integration:8080` |
-| `/api/executor`、Gateway、执行面 | `platform-integration-executor:8081` |
+| 路径域 | 目标 | 职责 |
+| --- | --- | --- |
+| `/api/platform`、`/api/system`、governance/version/release、低代码只读 | `platform-console:8090` | 平台基础治理与系统元数据 |
+| 默认 `/api`、认证、租户、订阅、Camel 定义面 | `platform-integration:8080` | 集成平台与流程治理 |
+| `/api/executor`、Gateway、执行面 | `platform-integration-executor:8088` | 运行时路由与网关执行（端口 8088） |
+| `/api/low-code/write/**` | `platform-low-code-write:8092` | 低代码独立写网关与安全保障 |
 
-当前是三进程过渡架构，不应再写成“只启动 platform-console + executor”。正式目标是三平台应用联合运行，demo 仅保留示例用途。
+当前为四进程平台架构，加固了低代码写操作的安全围栏。正式目标是平台应用联合运行，`demos/demo-camel-console` (8080) 与 `demos/demo-camel-executor` (8088) 仅保留示例与轻量调试用途。
 
 ## 7. 当前优先级
 

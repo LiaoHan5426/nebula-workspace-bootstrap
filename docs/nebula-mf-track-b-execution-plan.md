@@ -1,22 +1,31 @@
 # Nebula Module Federation B 轨执行计划
 
-> 依据：`nebula-module-federation-frontend-refactoring-plan.md` v1.1  
+> 依据：`nebula-module-federation-frontend-refactoring-plan.md` v1.2  
 > 范围：B 轨（§17 第 17–24 条；Phase 1–6 中 `[B]`）。不等待 C。  
 > 仓库：`nebula-studio`（前端）；组织主题后端 API 本批不做。  
-> 开工日：2026-08-23
+> 开工日：2026-08-23  
+> 状态复核：2026-09-08
 
-## 当前进度（2026-08-23）
+## 当前进度（2026-09-08）
 
-A 轨 1–16 已关门。B 轨执行切片已完成：第一至四批门户 Query/i18n、Query/Pinia 共享层、管理列表与服务治理/统计 Query（B5-1…B5-16）、AccessRequest Form pattern、Phase 6 样式收口与遗留 storage/locale adapter。C 轨见 `docs/nebula-mf-track-c-execution-plan.md`。
+A 轨 1–16 已关门。B 轨执行切片已全面落地并稳定：
+
+1. **设计系统与样式规范**：完成设计 Tokens 与 Theme Matrix，支持多模式与主题色；
+2. **状态与请求底座**：完成 Pinia 领域状态与 Vue Query 服务端状态管理，实现租户/登出数据清理与按需失效；
+3. **国际化与多语言**：Vue I18n 懒加载 chunk、fallback 策略与语言切换无重载支持；
+4. **表单体系演进**：完成全工作区从旧 `vee-validate` 向 `@tanstack/vue-form@1.33.5` + `zod@4.5.4` 的收敛迁移；
+5. **组件库公共 API 固化**：修复并固化 `@nebula-studio/nebula-ui` 的全部组件导出与类型声明，统一测试运行环境（happy-dom）。
+
+C 轨见 `docs/nebula-mf-track-c-execution-plan.md`。
 
 **历史保留项复评：** Playwright 全页视觉矩阵已经补齐。B-R1 已完成组织主题 JSONB、带 `sys:org:theme:manage` 的读写 REST、操作审计，以及 Host 的 user > organization > product 合并和切组织刷新。Vue Query persister 因完整响应持久化的隐私、租户隔离和 experimental API 风险继续不默认启用；产品帮助 Markdown 全量英译属于内容产品范围，而非架构阻塞。
 
 ## 复评实施结果
 
-| ID   | 工作项 | 验收 |
-| ---- | ------ | ---- |
-| B-R1 | 组织主题 REST（已完成） | `GET/PUT /api/system/organizations/{id}/theme`；JSONB、权限与操作审计；Host capability 统一加载/合并并在切组织时刷新，Remote 不增加直连分支 |
-| B-R2 | 遗留 UI 库存 | **已实现**：`check:b-inventory` 生成 `featureI18nCandidates` / `lowTrafficFormCandidates`；新建/修改页面强制迁移，未触达页面按 owner/批次追踪，不再笼统称“可选打磨” |
+| ID   | 工作项                  | 验收                                                                                                                                                                |
+| ---- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| B-R1 | 组织主题 REST（已完成） | `GET/PUT /api/system/organizations/{id}/theme`；JSONB、权限与操作审计；Host capability 统一加载/合并并在切组织时刷新，Remote 不增加直连分支                         |
+| B-R2 | 遗留 UI 库存            | **已实现**：`check:b-inventory` 生成 `featureI18nCandidates` / `lowTrafficFormCandidates`；新建/修改页面强制迁移，未触达页面按 owner/批次追踪，不再笼统称“可选打磨” |
 
 B-R1/B-R2 均已完成，B-R2 候选页面继续按触达范围迁移。
 
@@ -34,10 +43,10 @@ Phase 1 tokens / inventory / factory + Phase 4 Settings 主题 UI。验收命令
 
 ## Phase 2 B：Docs design catalog + 视觉基线
 
-| ID   | 工作项             | 验收                                                                                |
-| ---- | ------------------ | ----------------------------------------------------------------------------------- |
-| B2-4 | Design 侧栏        | Tokens（status vs accent）、Theme matrix、Primitives 入口、Patterns 短名单          |
-| B2-5 | Docs i18n 壳       | catalog/壳走 zh-CN/en-US chunk；产品帮助正文仍以中文为主                            |
+| ID   | 工作项             | 验收                                                                               |
+| ---- | ------------------ | ---------------------------------------------------------------------------------- |
+| B2-4 | Design 侧栏        | Tokens（status vs accent）、Theme matrix、Primitives 入口、Patterns 短名单         |
+| B2-5 | Docs i18n 壳       | catalog/壳走 zh-CN/en-US chunk；产品帮助正文仍以中文为主                           |
 | B2-6 | Host vs standalone | 同一套 `resolveTheme` token JSON；全页 PNG 矩阵已由 experience Playwright 项目覆盖 |
 
 ## Phase 4 B：Settings 界面 i18n
@@ -143,11 +152,11 @@ vp run --filter @nebula-studio/nebula-assembly test
 
 ## Phase 5 B 余量：服务治理 / 统计 / 申请 Form / 插件 list 合一
 
-| ID    | 工作项 | 验收 |
-| ----- | ------ | ---- |
-| B5-14 | Query  | 服务治理/授权/发布、审批/发布/版本、订阅申请、日志/统计/拓扑、任务实例、DAG、连接器走 queryOptions；网关 demo 用 `useMutation` |
-| B5-15 | Plugins | `PluginsPage` 只通过 `usePluginsPage` + `pluginListQueryOptions` 拉列表 |
-| B5-16 | Form | AccessRequest 使用 `NebulaForm` / `NebulaFormItem` / `NebulaStepFlow`，draft 仍走 Pinia |
+| ID    | 工作项  | 验收                                                                                                                           |
+| ----- | ------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| B5-14 | Query   | 服务治理/授权/发布、审批/发布/版本、订阅申请、日志/统计/拓扑、任务实例、DAG、连接器走 queryOptions；网关 demo 用 `useMutation` |
+| B5-15 | Plugins | `PluginsPage` 只通过 `usePluginsPage` + `pluginListQueryOptions` 拉列表                                                        |
+| B5-16 | Form    | AccessRequest 使用 `NebulaForm` / `NebulaFormItem` / `NebulaStepFlow`，draft 仍走 Pinia                                        |
 
 ```text
 vp run --filter @nebula-studio-renderer/integration typecheck

@@ -1,9 +1,9 @@
 # Nebula Studio 前端架构现状与增量重构计划
 
-> 文档版本：v3.1
-> 最后更新：2026-08-19
-> 代码基线：`nebula-studio@5a36a7e09787889607d53ddea65b3e25b98b5397`
-> 本文只描述当前代码和剩余增量工作；已完成的历史阶段不再作为待办重复保留。
+> 文档版本：v3.2（架构演进与装配层设计参考）
+> 最后更新：2026-09-08
+> 代码基线：`nebula-studio@406671858aeeffe57cf0320ebfd0d1f6ac4e34fd`
+> 架构演进说明：本文记录了 v3.x 阶段装配层 `nebula-assembly`、配置单源与宿主适配的设计与实现背景。随着后续 Module Federation 架构的全面落地，前端架构已进一步升级为 Host/Remote 模型：原 `bootMicroApp`、`sub-web/frontend`、`sub-web/login` 已被 Host 内置载荷（`@nebula-host-boot/workspace`、`@nebula-host-boot/login`）与 `@nebula-studio/application-bootstrap` 显式生命周期替代；最新跨仓库重构规划以 [Nebula 前端 Module Federation 架构重构计划](./nebula-module-federation-frontend-refactoring-plan.md) 及其 A/B/C 轨执行计划为准。
 
 ## 1. 当前结论
 
@@ -23,14 +23,14 @@ Nebula Studio 已完成宿主、窗口配置、preload、认证、运行时、�
 | 类别                     | 当前值               |
 | ------------------------ | -------------------- |
 | Node.js                  | `>=22.12.0`          |
-| 包管理声明               | `pnpm@11.5.1`        |
+| 包管理声明               | `pnpm@11.25.0`       |
 | 日常工具                 | Vite+ CLI `vp`       |
-| Vite+ / Vite             | 0.2.6 / 8.1.3        |
-| Vue / Vue Router         | 3.5.35 / 4.6.4       |
+| Vite+ / Vite             | 0.3.0 / 8.2.2        |
+| Vue / Vue Router         | 3.5.42 / 4.6.4       |
 | TypeScript               | 6.0.3                |
-| Electron / electron-vite | 43.x / 5.x           |
+| Electron / electron-vite | 44.2.0 / 5.0.0       |
 | Tailwind CSS             | 4.3.3                |
-| Vitest / Playwright      | 4.1.10 / 1.62.0      |
+| Vitest / Playwright      | 5.0.0 / 1.62.1       |
 | 工作区清单               | 38 个 `package.json` |
 
 版本事实来自根 `package.json` 与 `pnpm-workspace.yaml`。尽管 package manager 字段仍声明 pnpm，仓库约定日常安装、脚本、检查和测试统一经 `vp` 执行。
